@@ -1,0 +1,23 @@
+Generate an SEO title and collection title (H1) for the following Shopify collection page.
+
+COLLECTION CONTEXT:
+- Collection: {collection_name}
+- Primary Keyword: {primary_keyword} (Volume: {volume})
+- Brand: {brand_name}
+
+SEO TITLE RULES:
+- Formula: [Primary Keyword] | [Variation / USP] | For Sale at {brand_name}
+- Primary keyword MUST appear first
+- Total length: 50-60 characters
+- MUST use a separator (| or -)
+- MUST differ from the H1
+
+COLLECTION TITLE (H1) RULES:
+- Shorter, cleaner version of the primary keyword
+- MUST include the primary keyword
+- MUST differ from the SEO title
+- Keep concise (under 8 words)
+
+OUTPUT FORMAT:
+SEO Title: [your seo title here]
+Collection Title: [your h1 here]

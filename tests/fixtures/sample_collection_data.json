@@ -1,0 +1,53 @@
+{
+  "client_profile": {
+    "brand_name": "Lunar Jewelry",
+    "store_url": "https://lunarjewelry.co.uk",
+    "brand_usps": [
+      "Handcrafted in London using recycled precious metals",
+      "100% waterproof — shower, swim, and sleep in your jewelry",
+      "Lifetime warranty on all pieces",
+      "Hypoallergenic and nickel-free"
+    ],
+    "voice_notes": "Warm, confident, speaks to style-conscious women 25-45. Avoids corporate jargon.",
+    "target_market": "UK"
+  },
+  "collections": [
+    {
+      "collection_url": "https://lunarjewelry.co.uk/collections/waterproof-necklaces",
+      "collection_name": "Waterproof Necklaces",
+      "primary_keyword": "waterproof necklaces",
+      "primary_keyword_volume": 2900,
+      "secondary_keywords": [
+        {"keyword": "gold waterproof necklaces", "search_volume": 1200, "current_rank": 12},
+        {"keyword": "silver waterproof necklaces", "search_volume": 800, "current_rank": 15},
+        {"keyword": "waterproof jewelry", "search_volume": 600, "current_rank": 18}
+      ],
+      "total_volume": 5500,
+      "best_rank": 8
+    },
+    {
+      "collection_url": "https://lunarjewelry.co.uk/collections/gold-earrings",
+      "collection_name": "Gold Earrings",
+      "primary_keyword": "gold earrings",
+      "primary_keyword_volume": 5000,
+      "secondary_keywords": [
+        {"keyword": "hoop earrings gold", "search_volume": 2000, "current_rank": 9},
+        {"keyword": "gold stud earrings", "search_volume": 1500, "current_rank": 11}
+      ],
+      "total_volume": 8500,
+      "best_rank": 5
+    },
+    {
+      "collection_url": "https://lunarjewelry.co.uk/collections/silver-rings",
+      "collection_name": "Silver Rings",
+      "primary_keyword": "silver rings",
+      "primary_keyword_volume": 2800,
+      "secondary_keywords": [
+        {"keyword": "sterling silver rings", "search_volume": 1800, "current_rank": 10},
+        {"keyword": "silver rings for women", "search_volume": 900, "current_rank": 14}
+      ],
+      "total_volume": 5500,
+      "best_rank": 7
+    }
+  ]
+}

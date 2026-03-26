@@ -1,0 +1,74 @@
+{
+  "content_length": {
+    "description": {
+      "sweet_spot_min": 50,
+      "sweet_spot_max": 125,
+      "minimum_viable": 30,
+      "upper_limit_warn": 200,
+      "hard_ceiling": 400
+    },
+    "seo_title": {
+      "min_chars": 50,
+      "max_chars": 60
+    },
+    "meta_description": {
+      "max_chars": 155
+    },
+    "faq": {
+      "count_min": 2,
+      "count_max": 3,
+      "answer_sentences_min": 2,
+      "answer_sentences_max": 3
+    }
+  },
+  "content_inclusion": {
+    "description_min_usps": 2,
+    "description_product_links_min": 2,
+    "description_product_links_max": 4,
+    "description_collection_links_min": 1,
+    "description_collection_links_max": 2,
+    "description_min_secondary_keywords": 1,
+    "seo_title_must_lead_with_primary": true,
+    "seo_title_must_use_separator": true,
+    "seo_title_must_differ_from_h1": true,
+    "h1_must_include_primary_keyword": true,
+    "faqs_prefer_paa_data": true
+  },
+  "content_exclusion": {
+    "no_what_is_definitions": true,
+    "no_buying_guide_content": true,
+    "no_generic_competitor_passing": true,
+    "no_duplicate_faq_topics_in_batch": true,
+    "no_keyword_stuffing": true
+  },
+  "priority": {
+    "batch_size_min": 3,
+    "batch_size_max": 5,
+    "striking_distance_range": [8, 17],
+    "striking_distance_secondary": [18, 25],
+    "meta_description_top_collections": 10,
+    "element_priority_order": [
+      "description",
+      "seo_title",
+      "h1",
+      "internal_links",
+      "product_grid",
+      "url",
+      "meta_description"
+    ]
+  },
+  "scoring": {
+    "max_factor_score": 3,
+    "num_factors": 6,
+    "max_total_score": 18,
+    "factors": [
+      "organic_traffic",
+      "striking_distance",
+      "revenue_potential",
+      "homepage_nav_link",
+      "current_optimization",
+      "competitive_gap"
+    ]
+  },
+  "seo_title_formula": "[Primary Keyword] | [Variation / USP] | For Sale at [Brand]"
+}

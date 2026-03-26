@@ -1,0 +1,225 @@
+{
+  "categories": {
+    "seo_title": {
+      "label": "SEO Title",
+      "checks": [
+        {
+          "id": "seo_title_has_primary_keyword",
+          "label": "Contains primary keyword",
+          "type": "keyword_match",
+          "field": "seo_title",
+          "match_against": "primary_keyword",
+          "impact": "high",
+          "effort": "low"
+        },
+        {
+          "id": "seo_title_has_separator",
+          "label": "Uses separator format (| or -)",
+          "type": "regex",
+          "field": "seo_title",
+          "pattern": ".*[|\\-].*",
+          "impact": "medium",
+          "effort": "low"
+        },
+        {
+          "id": "seo_title_long_tail",
+          "label": "Targets long-tail keyword (3-5 words)",
+          "type": "word_count_range",
+          "field": "primary_keyword",
+          "min_words": 3,
+          "max_words": 5,
+          "impact": "medium",
+          "effort": "low"
+        },
+        {
+          "id": "seo_title_differs_from_h1",
+          "label": "Differs from Collection Title (H1)",
+          "type": "string_differs",
+          "field": "seo_title",
+          "compare_field": "h1",
+          "impact": "medium",
+          "effort": "low"
+        },
+        {
+          "id": "seo_title_length",
+          "label": "Length is 50-60 characters",
+          "type": "char_count_range",
+          "field": "seo_title",
+          "min_chars": 50,
+          "max_chars": 60,
+          "impact": "medium",
+          "effort": "low"
+        }
+      ]
+    },
+    "collection_title": {
+      "label": "Collection Title (H1)",
+      "checks": [
+        {
+          "id": "h1_present",
+          "label": "H1 is present and visible",
+          "type": "field_exists",
+          "field": "h1",
+          "impact": "high",
+          "effort": "low"
+        },
+        {
+          "id": "h1_concise",
+          "label": "Is descriptive but concise (under 8 words)",
+          "type": "word_count_range",
+          "field": "h1",
+          "min_words": 1,
+          "max_words": 8,
+          "impact": "low",
+          "effort": "low"
+        },
+        {
+          "id": "h1_has_primary_keyword",
+          "label": "Includes primary keyword",
+          "type": "keyword_match",
+          "field": "h1",
+          "match_against": "primary_keyword",
+          "impact": "high",
+          "effort": "low"
+        }
+      ]
+    },
+    "description": {
+      "label": "Collection Description",
+      "checks": [
+        {
+          "id": "description_exists",
+          "label": "Description exists",
+          "type": "field_exists",
+          "field": "description",
+          "impact": "high",
+          "effort": "medium"
+        },
+        {
+          "id": "description_word_count",
+          "label": "Word count in 50-125 range",
+          "type": "word_count_range",
+          "field": "description",
+          "min_words": 50,
+          "max_words": 125,
+          "impact": "medium",
+          "effort": "medium"
+        },
+        {
+          "id": "description_has_internal_links",
+          "label": "Contains internal links",
+          "type": "link_count",
+          "field": "description",
+          "min_links": 1,
+          "impact": "high",
+          "effort": "medium"
+        },
+        {
+          "id": "description_mentions_usps",
+          "label": "Mentions brand USPs",
+          "type": "usp_match",
+          "field": "description",
+          "min_matches": 2,
+          "impact": "high",
+          "effort": "medium"
+        },
+        {
+          "id": "description_competitor_test",
+          "label": "Passes competitor test (brand-specific content)",
+          "type": "manual_review",
+          "field": "description",
+          "impact": "high",
+          "effort": "high"
+        }
+      ]
+    },
+    "internal_linking": {
+      "label": "Internal Linking",
+      "checks": [
+        {
+          "id": "internal_links_count",
+          "label": "Has internal links pointing to this collection",
+          "type": "numeric_min",
+          "field": "inbound_internal_links",
+          "min_value": 1,
+          "impact": "high",
+          "effort": "medium"
+        },
+        {
+          "id": "linked_from_homepage",
+          "label": "Linked from homepage",
+          "type": "boolean_check",
+          "field": "linked_from_homepage",
+          "impact": "high",
+          "effort": "medium"
+        },
+        {
+          "id": "linked_from_blog",
+          "label": "Linked from blog content",
+          "type": "boolean_check",
+          "field": "linked_from_blog",
+          "impact": "medium",
+          "effort": "high"
+        }
+      ]
+    },
+    "technical": {
+      "label": "Technical SEO",
+      "checks": [
+        {
+          "id": "url_handle_has_keyword",
+          "label": "URL handle contains keyword",
+          "type": "keyword_match",
+          "field": "url",
+          "match_against": "primary_keyword",
+          "impact": "medium",
+          "effort": "medium"
+        },
+        {
+          "id": "url_handle_length",
+          "label": "URL handle is concise",
+          "type": "char_count_range",
+          "field": "url_handle",
+          "min_chars": 1,
+          "max_chars": 50,
+          "impact": "low",
+          "effort": "low"
+        },
+        {
+          "id": "meta_description_exists",
+          "label": "Meta description exists",
+          "type": "field_exists",
+          "field": "meta_description",
+          "impact": "medium",
+          "effort": "low"
+        },
+        {
+          "id": "meta_description_length",
+          "label": "Meta description under 155 characters",
+          "type": "char_count_range",
+          "field": "meta_description",
+          "min_chars": 50,
+          "max_chars": 155,
+          "impact": "medium",
+          "effort": "low"
+        },
+        {
+          "id": "faq_content_present",
+          "label": "FAQ content present below grid",
+          "type": "field_exists",
+          "field": "faq_content",
+          "impact": "medium",
+          "effort": "high"
+        },
+        {
+          "id": "structured_data_present",
+          "label": "Structured data (schema) present",
+          "type": "field_exists",
+          "field": "structured_data",
+          "impact": "medium",
+          "effort": "high"
+        }
+      ]
+    }
+  }
+}
