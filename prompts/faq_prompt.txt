@@ -1,0 +1,30 @@
+Generate {faq_count} FAQs for the following Shopify collection page.
+
+COLLECTION CONTEXT:
+- Collection: {collection_name}
+- Primary Keyword: {primary_keyword}
+- Secondary Keywords: {secondary_keywords}
+- Brand: {brand_name}
+- Brand USPs: {usps}
+
+PEOPLE ALSO ASK DATA (use these as inspiration where relevant):
+{paa_questions}
+
+RULES:
+- Generate exactly {faq_count} question-answer pairs
+- Each answer should be 2-3 sentences
+- Do NOT use "What is [product]?" style questions
+- Each FAQ must be tailored to {brand_name}'s specific offering
+- Answers should reference brand-specific details where possible
+- Questions should address real shopper concerns, not generic definitions
+{batch_exclusion_note}
+
+OUTPUT FORMAT:
+Q: [Question 1]
+A: [Answer 1]
+
+Q: [Question 2]
+A: [Answer 2]
+
+Q: [Question 3]
+A: [Answer 3]

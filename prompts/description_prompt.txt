@@ -1,0 +1,26 @@
+Generate a collection description for the following Shopify collection page.
+
+COLLECTION CONTEXT:
+- Collection: {collection_name}
+- Primary Keyword: {primary_keyword} (Volume: {volume})
+- Secondary Keywords: {secondary_keywords}
+- Products to Link: {product_links}
+- Related Collections: {related_collections}
+
+TARGET:
+- Word count: {target_word_count} words (minimum {min_words}, maximum {max_words})
+- Must reference at least {min_usps} of these brand USPs: {usps}
+- Must include {min_product_links}-{max_product_links} internal product links as markdown links
+- Must include {min_collection_links}-{max_collection_links} related collection links as markdown links
+- Must naturally include at least 1 secondary keyword
+
+RULES:
+- Write for shoppers first, search engines second
+- Do NOT open with "What is [product]?" or a dictionary-style definition
+- Do NOT write a generic buying guide
+- This content MUST include specific details about {brand_name} that could NOT appear on a competitor's page
+- Weave keywords in naturally — no stuffing
+- Use a warm, knowledgeable tone consistent with the brand voice
+
+OUTPUT:
+Return ONLY the collection description text with markdown links. No headings, no labels, no explanations.

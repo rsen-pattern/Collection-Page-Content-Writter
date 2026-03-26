@@ -1,0 +1,63 @@
+Generate a complete content package for the following Shopify collection page. All elements must be internally consistent — the description should reference the same USPs emphasized in the title, and FAQs should not repeat description content.
+
+COLLECTION CONTEXT:
+- Collection: {collection_name}
+- Primary Keyword: {primary_keyword} (Volume: {volume})
+- Secondary Keywords: {secondary_keywords}
+- Products to Link: {product_links}
+- Related Collections: {related_collections}
+- People Also Ask: {paa_questions}
+
+BRAND CONTEXT:
+- Brand: {brand_name}
+- Store URL: {store_url}
+- USPs: {usps}
+- Voice Notes: {voice_notes}
+- Target Market: {target_market}
+
+GENERATE ALL OF THE FOLLOWING:
+
+1. SEO TITLE
+- Formula: [Primary Keyword] | [Variation / USP] | For Sale at {brand_name}
+- 50-60 characters, primary keyword first, uses separator, differs from H1
+
+2. COLLECTION TITLE (H1)
+- Concise, includes primary keyword, differs from SEO title
+
+3. COLLECTION DESCRIPTION ({target_word_count} words target)
+- {min_words}-{max_words} words
+- Reference at least {min_usps} brand USPs
+- Include {min_product_links}-{max_product_links} internal product links as markdown
+- Include {min_collection_links}-{max_collection_links} related collection links as markdown
+- Naturally include secondary keywords
+- No definitions, no buying guides, must pass competitor test
+
+4. META DESCRIPTION
+- Under 155 characters, includes primary keyword, ends with CTA
+
+5. FAQs ({faq_count} questions)
+- 2-3 sentence answers, no "What is?" questions, brand-specific
+{batch_exclusion_note}
+
+OUTPUT FORMAT:
+---SEO TITLE---
+[seo title]
+
+---COLLECTION TITLE---
+[h1]
+
+---DESCRIPTION---
+[description with markdown links]
+
+---META DESCRIPTION---
+[meta description]
+
+---FAQ---
+Q: [question 1]
+A: [answer 1]
+
+Q: [question 2]
+A: [answer 2]
+
+Q: [question 3]
+A: [answer 3]

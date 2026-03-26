@@ -1,0 +1,61 @@
+{
+  "formats": {
+    "gsc": {
+      "name": "Google Search Console",
+      "detection_columns": ["Top queries", "Clicks", "Impressions", "CTR", "Position"],
+      "alternative_detection": ["Query", "Page", "Clicks", "Impressions"],
+      "column_mapping": {
+        "keyword": ["Top queries", "Query", "Queries"],
+        "url": ["Top pages", "Page", "Pages", "Landing Page"],
+        "clicks": ["Clicks"],
+        "impressions": ["Impressions"],
+        "ctr": ["CTR"],
+        "rank": ["Position", "Average position"]
+      }
+    },
+    "ahrefs": {
+      "name": "Ahrefs",
+      "detection_columns": ["Keyword", "Volume", "KD", "Current URL", "Current position"],
+      "alternative_detection": ["Keyword", "Search volume", "Keyword Difficulty"],
+      "column_mapping": {
+        "keyword": ["Keyword"],
+        "url": ["Current URL", "URL"],
+        "volume": ["Volume", "Search volume"],
+        "difficulty": ["KD", "Keyword Difficulty"],
+        "rank": ["Current position", "Position"],
+        "traffic": ["Traffic", "Estimated traffic"]
+      }
+    },
+    "semrush": {
+      "name": "SEMrush",
+      "detection_columns": ["Keyword", "Search Volume", "Keyword Difficulty", "Position", "URL"],
+      "alternative_detection": ["Keyword", "Volume", "KD%"],
+      "column_mapping": {
+        "keyword": ["Keyword"],
+        "url": ["URL"],
+        "volume": ["Search Volume", "Volume"],
+        "difficulty": ["Keyword Difficulty", "KD%"],
+        "rank": ["Position"],
+        "traffic": ["Traffic", "Traffic (%)"],
+        "cpc": ["CPC"]
+      }
+    },
+    "custom": {
+      "name": "Custom Format",
+      "detection_columns": [],
+      "column_mapping": {
+        "keyword": ["keyword", "primary_keyword", "query", "search_term"],
+        "url": ["url", "collection_url", "page", "landing_page"],
+        "volume": ["volume", "search_volume", "sv"],
+        "difficulty": ["difficulty", "kd", "keyword_difficulty"],
+        "rank": ["rank", "position", "current_rank"],
+        "clicks": ["clicks"],
+        "impressions": ["impressions"]
+      }
+    }
+  },
+  "internal_schema": {
+    "required_fields": ["collection_url", "collection_name", "primary_keyword"],
+    "optional_fields": ["secondary_keywords", "current_rank", "search_volume", "keyword_difficulty", "clicks", "impressions"]
+  }
+}
