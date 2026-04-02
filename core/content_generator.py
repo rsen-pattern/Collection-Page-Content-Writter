@@ -363,6 +363,11 @@ def generate_content(
     """
     from openai import OpenAI
 
+    # OpenAI SDK appends /chat/completions to base_url.
+    # Bifrost expects /v1/chat/completions, so ensure base_url ends with /v1
+    if not base_url.rstrip("/").endswith("/v1"):
+        base_url = base_url.rstrip("/") + "/v1"
+
     client = OpenAI(api_key=api_key, base_url=base_url)
     system_prompt = build_system_prompt(brief)
 
