@@ -3,7 +3,7 @@
 import re
 import streamlit as st
 
-st.set_page_config(page_title="Single URL Writer - Collection SEO Engine", layout="wide")
+
 st.title("Single URL Content Writer")
 st.markdown("Generate optimized content for a single collection page — no CSV upload or batch workflow needed.")
 

@@ -3,7 +3,7 @@
 import re
 import streamlit as st
 
-st.set_page_config(page_title="Content Studio - Collection SEO Engine", layout="wide")
+
 st.title("Step 4: Content Studio")
 
 if not st.session_state.get("batch_collections"):

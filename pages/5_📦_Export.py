@@ -3,7 +3,7 @@
 import streamlit as st
 from datetime import datetime
 
-st.set_page_config(page_title="Export - Collection SEO Engine", layout="wide")
+
 st.title("Step 5: Export & Implementation Tracking")
 
 if not st.session_state.get("batch_collections"):
