@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-st.set_page_config(page_title="Audit - Collection SEO Engine", layout="wide")
+
 st.title("Step 3: Automated Audit")
 
 if not st.session_state.get("batch_collections"):

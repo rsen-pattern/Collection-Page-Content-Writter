@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Data Input - Collection SEO Engine", layout="wide")
+
 st.title("Step 1: Data Input")
 
 # Ensure session state is initialized

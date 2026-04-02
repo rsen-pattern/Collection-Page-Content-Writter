@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Priority Scoring - Collection SEO Engine", layout="wide")
+
 st.title("Step 2: Priority Scoring & Batch Planning")
 
 if not st.session_state.get("collection_groups"):
