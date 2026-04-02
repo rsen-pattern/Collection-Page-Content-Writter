@@ -1,5 +1,6 @@
 """Step 4: Content Studio — Generate, review, and refine content."""
 
+import re
 import streamlit as st
 
 st.set_page_config(page_title="Content Studio - Collection SEO Engine", layout="wide")
@@ -22,6 +23,25 @@ from core.validator import (
     validate_meta_description,
     validate_faqs,
 )
+
+
+def _api_kwargs() -> dict:
+    """Common kwargs for generate_content calls."""
+    return {
+        "api_key": st.session_state.bifrost_api_key,
+        "base_url": st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+        "model": st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
+    }
+
+
+def _handle_result(result_tuple):
+    """Unpack (result, used_model) and show fallback info if needed."""
+    result, used_model = result_tuple
+    selected = st.session_state.get("selected_model", "")
+    if used_model != selected:
+        st.info(f"Fallback: used **{used_model}** (selected model failed)")
+    return result
+
 
 batch = st.session_state.batch_collections
 client = st.session_state.client_profile
@@ -63,10 +83,9 @@ for i, col in enumerate(batch):
     content_key = col["collection_url"]
     content = st.session_state.generated_content.get(content_key, {})
 
-    st.markdown(f"---")
+    st.markdown("---")
     st.markdown(f"## {col['collection_name']}")
 
-    # Brief tab and content tabs
     tab_brief, tab_desc, tab_faq, tab_titles, tab_meta = st.tabs(
         ["Brief", "Description", "FAQs", "Titles", "Meta"]
     )
@@ -83,25 +102,18 @@ for i, col in enumerate(batch):
             st.markdown(f"**Brand USPs:** {', '.join(brief.brand_usps)}")
             st.markdown(f"**Target Market:** {brief.target_market}")
 
-            # Editable brief fields
             products_text = st.text_area(
                 "Products to Link (one per line: name|url)",
-                value="\n".join(
-                    f"{p['name']}|{p['url']}" for p in brief.products_to_link
-                ) if brief.products_to_link else "",
+                value="\n".join(f"{p['name']}|{p['url']}" for p in brief.products_to_link) if brief.products_to_link else "",
                 key=f"products_{i}",
                 height=80,
             )
-
             related_text = st.text_area(
                 "Related Collections (one per line: name|url)",
-                value="\n".join(
-                    f"{c['name']}|{c['url']}" for c in brief.related_collections
-                ) if brief.related_collections else "",
+                value="\n".join(f"{c['name']}|{c['url']}" for c in brief.related_collections) if brief.related_collections else "",
                 key=f"related_{i}",
                 height=60,
             )
-
             paa_text = st.text_area(
                 "People Also Ask Questions (one per line)",
                 value="\n".join(brief.paa_questions),
@@ -109,7 +121,6 @@ for i, col in enumerate(batch):
                 height=60,
             )
 
-            # Update brief with edited values
             if products_text.strip():
                 products = []
                 for line in products_text.strip().split("\n"):
@@ -129,18 +140,15 @@ for i, col in enumerate(batch):
             if paa_text.strip():
                 brief.paa_questions = [q.strip() for q in paa_text.strip().split("\n") if q.strip()]
 
-        # Generate full brief
         if st.button("Generate Full Brief Package", key=f"gen_full_{i}", type="primary"):
             with st.spinner("Generating content..."):
                 try:
-                    result = generate_content(
-                        api_key=st.session_state.bifrost_api_key,
-                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
-                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
+                    result = _handle_result(generate_content(
+                        **_api_kwargs(),
                         brief=brief,
                         generation_type="full",
                         batch_faq_topics=st.session_state.batch_faq_topics,
-                    )
+                    ))
                     st.session_state.generated_content[content_key] = {
                         "seo_title": result.seo_title,
                         "collection_title": result.collection_title,
@@ -149,14 +157,12 @@ for i, col in enumerate(batch):
                         "faqs": result.faqs,
                         "approved": False,
                     }
-                    # Track FAQ topics for batch deduplication
                     for faq in result.faqs:
                         st.session_state.batch_faq_topics.append(faq.get("question", ""))
                     st.rerun()
                 except Exception as e:
                     st.error(f"Generation failed: {e}")
 
-    # Only show content tabs if content has been generated
     if not content:
         continue
 
@@ -169,12 +175,8 @@ for i, col in enumerate(batch):
         )
         content["description"] = desc_text
 
-        # Validation
         desc_validation = validate_description(
-            desc_text,
-            brief.primary_keyword,
-            brief.secondary_keywords,
-            brief.brand_usps,
+            desc_text, brief.primary_keyword, brief.secondary_keywords, brief.brand_usps,
         )
 
         wc = len(desc_text.split()) if desc_text.strip() else 0
@@ -185,7 +187,6 @@ for i, col in enumerate(batch):
             kw_found = sum(1 for kw in brief.secondary_keywords if kw.lower() in desc_text.lower())
             st.metric("Keywords Found", f"{kw_found}/{len(brief.secondary_keywords)}")
         with vc3:
-            import re
             link_count = len(re.findall(r"\[.*?\]\(.*?\)", desc_text))
             st.metric("Internal Links", link_count)
         with vc4:
@@ -195,48 +196,31 @@ for i, col in enumerate(batch):
             )
             st.metric("USPs Referenced", f"{usp_count}/{len(brief.brand_usps)}")
 
-        # Validation results
         for vr in desc_validation.results:
             icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
             st.markdown(f"{icon} {vr.message}")
 
-        dc1, dc2 = st.columns(2)
-        with dc1:
-            if st.button("Regenerate Description", key=f"regen_desc_{i}"):
-                with st.spinner("Regenerating..."):
-                    try:
-                        result = generate_content(
-                            api_key=st.session_state.bifrost_api_key,
-                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
-                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
-                            brief=brief,
-                            generation_type="description",
-                        )
-                        content["description"] = result.description
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Failed: {e}")
+        if st.button("Regenerate Description", key=f"regen_desc_{i}"):
+            with st.spinner("Regenerating..."):
+                try:
+                    result = _handle_result(generate_content(
+                        **_api_kwargs(), brief=brief, generation_type="description",
+                    ))
+                    content["description"] = result.description
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed: {e}")
 
     with tab_faq:
         faqs = content.get("faqs", [])
         updated_faqs = []
         for j, faq in enumerate(faqs):
             st.markdown(f"**FAQ {j+1}**")
-            q = st.text_input(
-                "Question",
-                value=faq.get("question", ""),
-                key=f"faq_q_{i}_{j}",
-            )
-            a = st.text_area(
-                "Answer",
-                value=faq.get("answer", ""),
-                key=f"faq_a_{i}_{j}",
-                height=80,
-            )
+            q = st.text_input("Question", value=faq.get("question", ""), key=f"faq_q_{i}_{j}")
+            a = st.text_area("Answer", value=faq.get("answer", ""), key=f"faq_a_{i}_{j}", height=80)
             updated_faqs.append({"question": q, "answer": a})
         content["faqs"] = updated_faqs
 
-        # FAQ validation
         faq_validation = validate_faqs(
             updated_faqs,
             brand_name=client.get("brand_name", ""),
@@ -252,14 +236,10 @@ for i, col in enumerate(batch):
         if st.button("Regenerate FAQs", key=f"regen_faqs_{i}"):
             with st.spinner("Regenerating..."):
                 try:
-                    result = generate_content(
-                        api_key=st.session_state.bifrost_api_key,
-                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
-                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
-                        brief=brief,
-                        generation_type="faqs",
+                    result = _handle_result(generate_content(
+                        **_api_kwargs(), brief=brief, generation_type="faqs",
                         batch_faq_topics=st.session_state.batch_faq_topics,
-                    )
+                    ))
                     content["faqs"] = result.faqs
                     st.rerun()
                 except Exception as e:
@@ -268,36 +248,17 @@ for i, col in enumerate(batch):
     with tab_titles:
         tc1, tc2 = st.columns(2)
         with tc1:
-            seo_title = st.text_input(
-                "SEO Title",
-                value=content.get("seo_title", ""),
-                key=f"seo_title_{i}",
-            )
+            seo_title = st.text_input("SEO Title", value=content.get("seo_title", ""), key=f"seo_title_{i}")
             content["seo_title"] = seo_title
-
-            title_validation = validate_seo_title(
-                seo_title,
-                brief.primary_keyword,
-                h1=content.get("collection_title", ""),
-                brand_name=client.get("brand_name", ""),
-            )
+            title_validation = validate_seo_title(seo_title, brief.primary_keyword, h1=content.get("collection_title", ""), brand_name=client.get("brand_name", ""))
             for vr in title_validation.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
                 st.markdown(f"{icon} {vr.message}")
 
         with tc2:
-            h1 = st.text_input(
-                "Collection Title (H1)",
-                value=content.get("collection_title", ""),
-                key=f"h1_{i}",
-            )
+            h1 = st.text_input("Collection Title (H1)", value=content.get("collection_title", ""), key=f"h1_{i}")
             content["collection_title"] = h1
-
-            h1_validation = validate_collection_title(
-                h1,
-                brief.primary_keyword,
-                seo_title=content.get("seo_title", ""),
-            )
+            h1_validation = validate_collection_title(h1, brief.primary_keyword, seo_title=content.get("seo_title", ""))
             for vr in h1_validation.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
                 st.markdown(f"{icon} {vr.message}")
@@ -305,13 +266,9 @@ for i, col in enumerate(batch):
         if st.button("Regenerate Titles", key=f"regen_titles_{i}"):
             with st.spinner("Regenerating..."):
                 try:
-                    result = generate_content(
-                        api_key=st.session_state.bifrost_api_key,
-                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
-                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
-                        brief=brief,
-                        generation_type="titles",
-                    )
+                    result = _handle_result(generate_content(
+                        **_api_kwargs(), brief=brief, generation_type="titles",
+                    ))
                     content["seo_title"] = result.seo_title
                     content["collection_title"] = result.collection_title
                     st.rerun()
@@ -319,16 +276,9 @@ for i, col in enumerate(batch):
                     st.error(f"Failed: {e}")
 
     with tab_meta:
-        meta_desc = st.text_input(
-            "Meta Description",
-            value=content.get("meta_description", ""),
-            key=f"meta_desc_{i}",
-        )
+        meta_desc = st.text_input("Meta Description", value=content.get("meta_description", ""), key=f"meta_desc_{i}")
         content["meta_description"] = meta_desc
-
-        meta_validation = validate_meta_description(
-            meta_desc, brief.primary_keyword
-        )
+        meta_validation = validate_meta_description(meta_desc, brief.primary_keyword)
         for vr in meta_validation.results:
             icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
             st.markdown(f"{icon} {vr.message}")
@@ -342,7 +292,7 @@ for i, col in enumerate(batch):
             st.success("Content approved!")
     with ac2:
         if content.get("approved"):
-            st.success("✅ Approved")
+            st.success("Approved")
     with ac3:
         if st.button("Copy All to Clipboard", key=f"copy_{i}"):
             clipboard_text = f"""SEO Title: {content.get('seo_title', '')}
@@ -358,7 +308,6 @@ FAQs:
                 clipboard_text += f"\nQ: {faq.get('question', '')}\nA: {faq.get('answer', '')}\n"
             st.code(clipboard_text, language=None)
 
-    # Save content back
     st.session_state.generated_content[content_key] = content
 
 # Batch actions
@@ -378,14 +327,12 @@ with ba1:
             if brief:
                 with st.spinner(f"Generating {col['collection_name']}..."):
                     try:
-                        result = generate_content(
-                            api_key=st.session_state.bifrost_api_key,
-                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
-                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
+                        result = _handle_result(generate_content(
+                            **_api_kwargs(),
                             brief=brief,
                             generation_type="full",
                             batch_faq_topics=st.session_state.batch_faq_topics,
-                        )
+                        ))
                         st.session_state.generated_content[bk] = {
                             "seo_title": result.seo_title,
                             "collection_title": result.collection_title,

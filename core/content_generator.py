@@ -291,15 +291,18 @@ def load_available_models() -> dict:
 
 
 def get_model_list() -> list[dict]:
-    """Get a flat list of all available models with provider info."""
+    """Get a flat list of all models in provider_id/model_id format."""
     config = load_available_models()
     models = []
-    for provider, data in config["providers"].items():
+    for provider_name, data in config["providers"].items():
+        provider_id = data["provider_id"]
         for model in data["models"]:
+            bifrost_id = f"{provider_id}/{model['id']}"
             models.append({
-                "id": model["id"],
-                "label": f"{model['label']} ({provider})",
-                "provider": provider,
+                "id": bifrost_id,
+                "label": f"{model['label']}  ({provider_name})",
+                "provider": provider_name,
+                "provider_id": provider_id,
                 "context": model["context"],
                 "max_output": model["max_output"],
             })
@@ -307,9 +310,33 @@ def get_model_list() -> list[dict]:
 
 
 def get_default_model() -> str:
-    """Get the default model ID."""
+    """Get the default model ID (provider_id/model_id format)."""
     config = load_available_models()
-    return config.get("default_model", "claude-sonnet-4-6")
+    return config.get("default_model", "anthropic/claude-sonnet-4-6")
+
+
+def get_fallback_chain() -> list[str]:
+    """Get the fallback model chain for retry logic."""
+    config = load_available_models()
+    return config.get("fallback_chain", [])
+
+
+def _call_bifrost(
+    client,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> str:
+    """Make a single call to Bifrost and return the response text."""
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=2000,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+    return response.choices[0].message.content
 
 
 def generate_content(
@@ -317,17 +344,21 @@ def generate_content(
     brief: ContentBrief,
     generation_type: str = "full",
     batch_faq_topics: list[str] = None,
-    model: str = "claude-sonnet-4-6",
+    model: str = "anthropic/claude-sonnet-4-6",
     base_url: str = "https://api.getbifrost.ai",
 ) -> GeneratedContent:
     """Generate content via Bifrost API gateway (OpenAI-compatible).
+
+    Uses provider_id/model_id format for Bifrost routing.
+    On failure, automatically falls through to the next model in the
+    fallback chain defined in config/models.json.
 
     Args:
         api_key: Bifrost API key
         brief: Content brief with all context
         generation_type: "full", "description", "titles", or "faqs"
         batch_faq_topics: FAQ topics already used in this batch
-        model: Model ID to use (routed through Bifrost)
+        model: Model ID in provider_id/model_id format (e.g. anthropic/claude-sonnet-4-6)
         base_url: Bifrost API base URL
     """
     from openai import OpenAI
@@ -346,16 +377,28 @@ def generate_content(
     else:
         raise ValueError(f"Unknown generation type: {generation_type}")
 
-    response = client.chat.completions.create(
-        model=model,
-        max_tokens=2000,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
+    # Build attempt order: selected model first, then fallback chain
+    fallback_chain = get_fallback_chain()
+    models_to_try = [model] + [m for m in fallback_chain if m != model]
 
-    response_text = response.choices[0].message.content
+    response_text = None
+    last_error = None
+    used_model = model
+
+    for attempt_model in models_to_try:
+        try:
+            response_text = _call_bifrost(client, attempt_model, system_prompt, user_prompt)
+            used_model = attempt_model
+            break
+        except Exception as e:
+            last_error = e
+            continue
+
+    if response_text is None:
+        raise RuntimeError(
+            f"All models failed. Tried: {', '.join(models_to_try)}. "
+            f"Last error: {last_error}"
+        )
 
     result = GeneratedContent(
         collection_url=brief.collection_url,
@@ -378,4 +421,4 @@ def generate_content(
     elif generation_type == "faqs":
         result.faqs = parse_faqs(response_text)
 
-    return result
+    return result, used_model

@@ -21,15 +21,25 @@ def load_model_config():
 
 
 def get_model_options():
-    """Build model selection options grouped by provider."""
+    """Build model selection options in provider_id/model_id format."""
     config = load_model_config()
     options = []
     labels = {}
-    for provider, data in config["providers"].items():
+    for provider_name, data in config["providers"].items():
+        provider_id = data["provider_id"]
         for model in data["models"]:
-            options.append(model["id"])
-            labels[model["id"]] = f"{model['label']}  ({provider})"
-    return options, labels, config.get("default_model", "claude-sonnet-4-6")
+            bifrost_id = f"{provider_id}/{model['id']}"
+            options.append(bifrost_id)
+            labels[bifrost_id] = f"{model['label']}  ({provider_name})"
+    return options, labels, config.get("default_model", "anthropic/claude-sonnet-4-6")
+
+
+def get_secret(key: str, default: str = "") -> str:
+    """Get a value from st.secrets with fallback to default."""
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
 
 
 def init_session_state():
@@ -59,13 +69,13 @@ def init_session_state():
         "batch_faq_topics": [],
         # Export
         "implementation_tracker": {},
-        # Bifrost API config (session only)
-        "bifrost_api_key": "",
-        "bifrost_base_url": "https://api.getbifrost.ai",
-        "selected_model": "claude-sonnet-4-6",
+        # Bifrost API config — load from secrets first, then allow override
+        "bifrost_api_key": get_secret("BIFROST_API_KEY"),
+        "bifrost_base_url": get_secret("BIFROST_BASE_URL", "https://api.getbifrost.ai"),
+        "selected_model": get_secret("BIFROST_DEFAULT_MODEL", "anthropic/claude-sonnet-4-6"),
         # DataForSEO (optional)
-        "dataforseo_login": "",
-        "dataforseo_password": "",
+        "dataforseo_login": get_secret("DATAFORSEO_LOGIN"),
+        "dataforseo_password": get_secret("DATAFORSEO_PASSWORD"),
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -110,6 +120,15 @@ with st.sidebar:
     )
     if selected_model != st.session_state.selected_model:
         st.session_state.selected_model = selected_model
+
+    # Show fallback info
+    config = load_model_config()
+    fallback_chain = config.get("fallback_chain", [])
+    if fallback_chain:
+        with st.expander("Fallback Chain"):
+            st.caption("If the selected model fails, these are tried in order:")
+            for i, m in enumerate(fallback_chain, 1):
+                st.caption(f"{i}. `{m}`")
 
     st.markdown("---")
 
