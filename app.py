@@ -1,5 +1,8 @@
 """Collection SEO Engine — Main Streamlit entry point."""
 
+import json
+from pathlib import Path
+
 import streamlit as st
 
 st.set_page_config(
@@ -8,6 +11,25 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+
+def load_model_config():
+    """Load available models from config."""
+    config_path = Path(__file__).parent / "config" / "models.json"
+    with open(config_path) as f:
+        return json.load(f)
+
+
+def get_model_options():
+    """Build model selection options grouped by provider."""
+    config = load_model_config()
+    options = []
+    labels = {}
+    for provider, data in config["providers"].items():
+        for model in data["models"]:
+            options.append(model["id"])
+            labels[model["id"]] = f"{model['label']}  ({provider})"
+    return options, labels, config.get("default_model", "claude-sonnet-4-6")
 
 
 def init_session_state():
@@ -37,8 +59,11 @@ def init_session_state():
         "batch_faq_topics": [],
         # Export
         "implementation_tracker": {},
-        # API keys (session only)
-        "anthropic_api_key": "",
+        # Bifrost API config (session only)
+        "bifrost_api_key": "",
+        "bifrost_base_url": "https://api.getbifrost.ai",
+        "selected_model": "claude-sonnet-4-6",
+        # DataForSEO (optional)
         "dataforseo_login": "",
         "dataforseo_password": "",
     }
@@ -49,124 +74,46 @@ def init_session_state():
 
 init_session_state()
 
-# Main page
-st.title("Collection SEO Engine")
-st.markdown(
-    "An internal agency tool for auditing and optimizing eCommerce collection pages at scale."
-)
-
-st.markdown("---")
-
-# Workflow steps
-col1, col2, col3, col4, col5 = st.columns(5)
-
-with col1:
-    has_data = st.session_state.normalized_data is not None
-    st.markdown(
-        f"### {'✅' if has_data else '1️⃣'} Data Input"
-    )
-    st.caption("Upload keyword data & set up client profile")
-
-with col2:
-    has_scores = len(st.session_state.scored_collections) > 0
-    st.markdown(
-        f"### {'✅' if has_scores else '2️⃣'} Priority Scoring"
-    )
-    st.caption("Score & batch collections")
-
-with col3:
-    has_audits = len(st.session_state.audit_results) > 0
-    st.markdown(
-        f"### {'✅' if has_audits else '3️⃣'} Audit"
-    )
-    st.caption("Automated page audits")
-
-with col4:
-    has_content = len(st.session_state.generated_content) > 0
-    st.markdown(
-        f"### {'✅' if has_content else '4️⃣'} Content Studio"
-    )
-    st.caption("Generate & review content")
-
-with col5:
-    st.markdown("### 5️⃣ Export")
-    st.caption("Export for implementation")
-
-st.markdown("---")
-
-# Quick stats
-if st.session_state.collection_groups:
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("Collections", len(st.session_state.collection_groups))
-    with m2:
-        st.metric("In Batch", len(st.session_state.batch_collections))
-    with m3:
-        st.metric("Content Generated", len(st.session_state.generated_content))
-    with m4:
-        approved = sum(
-            1
-            for c in st.session_state.generated_content.values()
-            if c.get("approved")
-        )
-        st.metric("Approved", approved)
-
-st.markdown("---")
-
-st.markdown("### Two Ways to Work")
-
-tw1, tw2 = st.columns(2)
-with tw1:
-    st.markdown("#### Bulk Pipeline (Steps 1-5)")
-    st.markdown(
-        """
-Upload CSV keyword data, score and batch collections,
-run audits, generate content at scale, and export.
-Best for **full client engagements** with 10+ collections.
-"""
-    )
-
-with tw2:
-    st.markdown("#### Single URL Writer")
-    st.markdown(
-        """
-Enter one collection URL, fill in the context, and generate
-optimized content immediately. No CSV needed.
-Best for **quick jobs** or individual page rewrites.
-
-Go to **Single URL Writer** in the sidebar.
-"""
-    )
-
-st.markdown("---")
-st.markdown("### Bulk Pipeline Steps")
-st.markdown(
-    """
-1. **Data Input** — upload keyword data and configure the client profile
-2. **Priority Scoring** — score and batch collections
-3. **Audit** — check current page state and identify gaps
-4. **Content Studio** — generate and review content
-5. **Export** — keyword maps, content delivery docs, or Shopify-ready CSVs
-
-Use the sidebar to navigate between steps. Progress is saved automatically.
-"""
-)
-
-# Sidebar API configuration
+# ============================================================
+# SIDEBAR — API Configuration & Model Selection
+# ============================================================
 with st.sidebar:
-    st.markdown("### API Configuration")
+    st.markdown("### Bifrost API")
 
-    with st.expander("Anthropic API Key", expanded=not st.session_state.anthropic_api_key):
-        api_key = st.text_input(
-            "API Key",
-            value=st.session_state.anthropic_api_key,
-            type="password",
-            key="sidebar_anthropic_key",
-        )
-        if api_key != st.session_state.anthropic_api_key:
-            st.session_state.anthropic_api_key = api_key
+    api_key = st.text_input(
+        "API Key",
+        value=st.session_state.bifrost_api_key,
+        type="password",
+        key="sidebar_bifrost_key",
+    )
+    if api_key != st.session_state.bifrost_api_key:
+        st.session_state.bifrost_api_key = api_key
 
-    with st.expander("DataForSEO Credentials (Optional)"):
+    base_url = st.text_input(
+        "Base URL",
+        value=st.session_state.bifrost_base_url,
+        key="sidebar_bifrost_url",
+    )
+    if base_url != st.session_state.bifrost_base_url:
+        st.session_state.bifrost_base_url = base_url
+
+    st.markdown("### Model")
+    model_options, model_labels, default_model = get_model_options()
+    default_idx = model_options.index(default_model) if default_model in model_options else 0
+
+    selected_model = st.selectbox(
+        "Generation Model",
+        model_options,
+        index=model_options.index(st.session_state.selected_model) if st.session_state.selected_model in model_options else default_idx,
+        format_func=lambda x: model_labels.get(x, x),
+        key="sidebar_model",
+    )
+    if selected_model != st.session_state.selected_model:
+        st.session_state.selected_model = selected_model
+
+    st.markdown("---")
+
+    with st.expander("DataForSEO (Optional)"):
         dfs_login = st.text_input(
             "Login",
             value=st.session_state.dataforseo_login,
@@ -182,3 +129,101 @@ with st.sidebar:
             st.session_state.dataforseo_login = dfs_login
         if dfs_password != st.session_state.dataforseo_password:
             st.session_state.dataforseo_password = dfs_password
+
+
+# ============================================================
+# MAIN PAGE
+# ============================================================
+st.title("Collection SEO Engine")
+st.markdown(
+    "An internal agency tool for auditing and optimizing eCommerce collection pages at scale."
+)
+
+# Connection status
+if st.session_state.bifrost_api_key:
+    st.success(f"Connected to Bifrost — Model: **{model_labels.get(st.session_state.selected_model, st.session_state.selected_model)}**")
+else:
+    st.warning("Set your Bifrost API key in the sidebar to enable content generation.")
+
+st.markdown("---")
+
+# ============================================================
+# TWO MODES
+# ============================================================
+mode1, mode2 = st.columns(2)
+
+with mode1:
+    st.markdown("### Single Page Generator")
+    st.markdown(
+        """
+Enter one collection URL, fill in the brand context,
+and generate optimized content immediately.
+
+**Best for:** Quick jobs, individual page rewrites, one-off requests.
+
+**Go to** → **Single URL Writer** in the sidebar.
+"""
+    )
+
+with mode2:
+    st.markdown("### Bulk Generator Pipeline")
+    st.markdown(
+        """
+Upload CSV keyword data, score and batch collections,
+run audits, generate content at scale, and export.
+
+**Best for:** Full client engagements with 10+ collections.
+
+**Go to** → **Data Input** in the sidebar to start.
+"""
+    )
+
+st.markdown("---")
+
+# ============================================================
+# BULK PIPELINE STATUS
+# ============================================================
+st.markdown("### Bulk Pipeline Status")
+
+col1, col2, col3, col4, col5 = st.columns(5)
+
+with col1:
+    has_data = st.session_state.normalized_data is not None
+    st.markdown(f"### {'✅' if has_data else '1️⃣'} Data Input")
+    st.caption("Upload keyword data")
+
+with col2:
+    has_scores = len(st.session_state.scored_collections) > 0
+    st.markdown(f"### {'✅' if has_scores else '2️⃣'} Scoring")
+    st.caption("Prioritize collections")
+
+with col3:
+    has_audits = len(st.session_state.audit_results) > 0
+    st.markdown(f"### {'✅' if has_audits else '3️⃣'} Audit")
+    st.caption("Page audits")
+
+with col4:
+    has_content = len(st.session_state.generated_content) > 0
+    st.markdown(f"### {'✅' if has_content else '4️⃣'} Content")
+    st.caption("Generate & review")
+
+with col5:
+    st.markdown("### 5️⃣ Export")
+    st.caption("Export results")
+
+if st.session_state.collection_groups:
+    st.markdown("---")
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric("Collections", len(st.session_state.collection_groups))
+    with m2:
+        st.metric("In Batch", len(st.session_state.batch_collections))
+    with m3:
+        st.metric("Content Generated", len(st.session_state.generated_content))
+    with m4:
+        approved = sum(
+            1
+            for c in st.session_state.generated_content.values()
+            if c.get("approved")
+        )
+        st.metric("Approved", approved)

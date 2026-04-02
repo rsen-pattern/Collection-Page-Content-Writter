@@ -9,8 +9,8 @@ if not st.session_state.get("batch_collections"):
     st.warning("No batch selected. Please complete Step 2 first.")
     st.stop()
 
-if not st.session_state.get("anthropic_api_key"):
-    st.warning("Please set your Anthropic API key in the sidebar on the main page.")
+if not st.session_state.get("bifrost_api_key"):
+    st.warning("Please set your Bifrost API key in the sidebar on the main page.")
     st.stop()
 
 from core.brief_builder import build_brief, ContentBrief
@@ -134,7 +134,9 @@ for i, col in enumerate(batch):
             with st.spinner("Generating content..."):
                 try:
                     result = generate_content(
-                        api_key=st.session_state.anthropic_api_key,
+                        api_key=st.session_state.bifrost_api_key,
+                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
                         brief=brief,
                         generation_type="full",
                         batch_faq_topics=st.session_state.batch_faq_topics,
@@ -204,7 +206,9 @@ for i, col in enumerate(batch):
                 with st.spinner("Regenerating..."):
                     try:
                         result = generate_content(
-                            api_key=st.session_state.anthropic_api_key,
+                            api_key=st.session_state.bifrost_api_key,
+                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
                             brief=brief,
                             generation_type="description",
                         )
@@ -249,7 +253,9 @@ for i, col in enumerate(batch):
             with st.spinner("Regenerating..."):
                 try:
                     result = generate_content(
-                        api_key=st.session_state.anthropic_api_key,
+                        api_key=st.session_state.bifrost_api_key,
+                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
                         brief=brief,
                         generation_type="faqs",
                         batch_faq_topics=st.session_state.batch_faq_topics,
@@ -300,7 +306,9 @@ for i, col in enumerate(batch):
             with st.spinner("Regenerating..."):
                 try:
                     result = generate_content(
-                        api_key=st.session_state.anthropic_api_key,
+                        api_key=st.session_state.bifrost_api_key,
+                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
                         brief=brief,
                         generation_type="titles",
                     )
@@ -371,7 +379,9 @@ with ba1:
                 with st.spinner(f"Generating {col['collection_name']}..."):
                     try:
                         result = generate_content(
-                            api_key=st.session_state.anthropic_api_key,
+                            api_key=st.session_state.bifrost_api_key,
+                            base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+                            model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
                             brief=brief,
                             generation_type="full",
                             batch_faq_topics=st.session_state.batch_faq_topics,
