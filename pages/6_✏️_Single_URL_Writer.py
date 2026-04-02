@@ -13,19 +13,8 @@ if "single_url_content" not in st.session_state:
 if "single_url_history" not in st.session_state:
     st.session_state.single_url_history = []
 
-# --- Sidebar: API Key ---
+# --- Sidebar: Previous URLs ---
 with st.sidebar:
-    st.markdown("### API Configuration")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        value=st.session_state.get("anthropic_api_key", ""),
-        type="password",
-        key="single_api_key",
-    )
-    if api_key:
-        st.session_state.anthropic_api_key = api_key
-
-    st.markdown("---")
     st.markdown("### Previous URLs")
     for item in st.session_state.single_url_history:
         st.caption(f"• {item['collection_name']}")
@@ -147,7 +136,7 @@ paa_questions = [q.strip() for q in paa_text.strip().split("\n") if q.strip()]
 
 # Validation
 required_filled = all([collection_url, collection_name, primary_keyword, brand_name, len(brand_usps) >= 2])
-has_api_key = bool(st.session_state.get("anthropic_api_key"))
+has_api_key = bool(st.session_state.get("bifrost_api_key"))
 
 if not required_filled:
     missing = []
@@ -164,7 +153,7 @@ if not required_filled:
     st.warning(f"Fill in required fields: {', '.join(missing)}")
 
 if not has_api_key:
-    st.warning("Set your Anthropic API key in the sidebar.")
+    st.warning("Set your Bifrost API key in the sidebar on the main page.")
 
 # Generation options
 gen_col1, gen_col2 = st.columns(2)
@@ -211,7 +200,9 @@ if st.button(
     with st.spinner("Generating content with Claude..."):
         try:
             result = generate_content(
-                api_key=st.session_state.anthropic_api_key,
+                api_key=st.session_state.bifrost_api_key,
+                base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+                model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
                 brief=brief,
                 generation_type=type_map[generation_type],
             )

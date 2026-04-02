@@ -281,25 +281,58 @@ def parse_faqs(text: str) -> list[dict]:
     return faqs
 
 
+def load_available_models() -> dict:
+    """Load available models from config."""
+    import json
+
+    config_path = Path(__file__).parent.parent / "config" / "models.json"
+    with open(config_path) as f:
+        return json.load(f)
+
+
+def get_model_list() -> list[dict]:
+    """Get a flat list of all available models with provider info."""
+    config = load_available_models()
+    models = []
+    for provider, data in config["providers"].items():
+        for model in data["models"]:
+            models.append({
+                "id": model["id"],
+                "label": f"{model['label']} ({provider})",
+                "provider": provider,
+                "context": model["context"],
+                "max_output": model["max_output"],
+            })
+    return models
+
+
+def get_default_model() -> str:
+    """Get the default model ID."""
+    config = load_available_models()
+    return config.get("default_model", "claude-sonnet-4-6")
+
+
 def generate_content(
     api_key: str,
     brief: ContentBrief,
     generation_type: str = "full",
     batch_faq_topics: list[str] = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-6",
+    base_url: str = "https://api.getbifrost.ai",
 ) -> GeneratedContent:
-    """Generate content using the Anthropic Claude API.
+    """Generate content via Bifrost API gateway (OpenAI-compatible).
 
     Args:
-        api_key: Anthropic API key
+        api_key: Bifrost API key
         brief: Content brief with all context
         generation_type: "full", "description", "titles", or "faqs"
         batch_faq_topics: FAQ topics already used in this batch
-        model: Claude model to use
+        model: Model ID to use (routed through Bifrost)
+        base_url: Bifrost API base URL
     """
-    import anthropic
+    from openai import OpenAI
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = OpenAI(api_key=api_key, base_url=base_url)
     system_prompt = build_system_prompt(brief)
 
     if generation_type == "full":
@@ -313,14 +346,16 @@ def generate_content(
     else:
         raise ValueError(f"Unknown generation type: {generation_type}")
 
-    message = client.messages.create(
+    response = client.chat.completions.create(
         model=model,
         max_tokens=2000,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
     )
 
-    response_text = message.content[0].text
+    response_text = response.choices[0].message.content
 
     result = GeneratedContent(
         collection_url=brief.collection_url,
