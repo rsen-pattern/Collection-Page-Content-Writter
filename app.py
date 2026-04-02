@@ -112,14 +112,41 @@ if st.session_state.collection_groups:
         st.metric("Approved", approved)
 
 st.markdown("---")
-st.markdown("### Getting Started")
+
+st.markdown("### Two Ways to Work")
+
+tw1, tw2 = st.columns(2)
+with tw1:
+    st.markdown("#### Bulk Pipeline (Steps 1-5)")
+    st.markdown(
+        """
+Upload CSV keyword data, score and batch collections,
+run audits, generate content at scale, and export.
+Best for **full client engagements** with 10+ collections.
+"""
+    )
+
+with tw2:
+    st.markdown("#### Single URL Writer")
+    st.markdown(
+        """
+Enter one collection URL, fill in the context, and generate
+optimized content immediately. No CSV needed.
+Best for **quick jobs** or individual page rewrites.
+
+Go to **Single URL Writer** in the sidebar.
+"""
+    )
+
+st.markdown("---")
+st.markdown("### Bulk Pipeline Steps")
 st.markdown(
     """
-1. **Navigate to Data Input** in the sidebar to upload your keyword data and configure the client profile
-2. **Score & prioritize** collections, then select a batch of 3-5 to optimize
-3. **Run audits** to see current page state and identify gaps
-4. **Generate content** with AI-assisted brief packages following the playbook methodology
-5. **Export** completed keyword maps, content delivery docs, or Shopify-ready CSVs
+1. **Data Input** — upload keyword data and configure the client profile
+2. **Priority Scoring** — score and batch collections
+3. **Audit** — check current page state and identify gaps
+4. **Content Studio** — generate and review content
+5. **Export** — keyword maps, content delivery docs, or Shopify-ready CSVs
 
 Use the sidebar to navigate between steps. Progress is saved automatically.
 """
