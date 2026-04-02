@@ -197,15 +197,18 @@ if st.button(
         keyword_difficulty=float(keyword_difficulty),
     )
 
-    with st.spinner("Generating content with Claude..."):
+    with st.spinner("Generating content..."):
         try:
-            result = generate_content(
+            result, used_model = generate_content(
                 api_key=st.session_state.bifrost_api_key,
-                base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
-                model=st.session_state.get("selected_model", "claude-sonnet-4-6"),
+                base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
+                model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
                 brief=brief,
                 generation_type=type_map[generation_type],
             )
+            selected = st.session_state.get("selected_model", "")
+            if used_model != selected:
+                st.info(f"Fallback: used **{used_model}** (selected model failed)")
             st.session_state.single_url_content = {
                 "seo_title": result.seo_title,
                 "collection_title": result.collection_title,

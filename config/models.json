@@ -1,7 +1,15 @@
 {
-  "default_model": "claude-sonnet-4-6",
+  "default_model": "anthropic/claude-sonnet-4-6",
+  "fallback_chain": [
+    "anthropic/claude-sonnet-4-6",
+    "anthropic/claude-sonnet-4-5",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-4.1",
+    "gemini/gemini-2.5-flash"
+  ],
   "providers": {
     "Anthropic": {
+      "provider_id": "anthropic",
       "models": [
         {"id": "claude-opus-4-6", "label": "Claude Opus 4.6", "context": 1000000, "max_output": 128000},
         {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6", "context": 1000000, "max_output": 64000},
@@ -9,17 +17,22 @@
         {"id": "claude-sonnet-4-5", "label": "Claude Sonnet 4.5", "context": 200000, "max_output": 64000},
         {"id": "claude-4-opus-20250514", "label": "Claude 4 Opus", "context": 200000, "max_output": 32000},
         {"id": "claude-4-sonnet-20250514", "label": "Claude 4 Sonnet", "context": 1000000, "max_output": 64000},
-        {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5", "context": 200000, "max_output": 64000}
+        {"id": "claude-opus-4-1", "label": "Claude Opus 4.1", "context": 200000, "max_output": 32000},
+        {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5", "context": 200000, "max_output": 64000},
+        {"id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5 (Oct)", "context": 200000, "max_output": 64000}
       ]
     },
     "OpenAI": {
+      "provider_id": "openai",
       "models": [
         {"id": "gpt-5.4", "label": "GPT-5.4", "context": 1050000, "max_output": 128000},
         {"id": "gpt-5.4-mini", "label": "GPT-5.4 Mini", "context": 272000, "max_output": 128000},
+        {"id": "gpt-5.4-nano", "label": "GPT-5.4 Nano", "context": 272000, "max_output": 128000},
         {"id": "gpt-5.2", "label": "GPT-5.2", "context": 272000, "max_output": 128000},
         {"id": "gpt-5.1", "label": "GPT-5.1", "context": 272000, "max_output": 128000},
         {"id": "gpt-5", "label": "GPT-5", "context": 272000, "max_output": 128000},
         {"id": "gpt-5-mini", "label": "GPT-5 Mini", "context": 272000, "max_output": 128000},
+        {"id": "gpt-5-nano", "label": "GPT-5 Nano", "context": 272000, "max_output": 128000},
         {"id": "gpt-4.1", "label": "GPT-4.1", "context": 1047576, "max_output": 32768},
         {"id": "gpt-4.1-mini", "label": "GPT-4.1 Mini", "context": 1047576, "max_output": 32768},
         {"id": "gpt-4.1-nano", "label": "GPT-4.1 Nano", "context": 1047576, "max_output": 32768},
@@ -31,25 +44,24 @@
       ]
     },
     "Google": {
+      "provider_id": "gemini",
       "models": [
         {"id": "gemini-3-pro-preview", "label": "Gemini 3 Pro", "context": 1048576, "max_output": 65535},
         {"id": "gemini-3-flash-preview", "label": "Gemini 3 Flash", "context": 1048576, "max_output": 65535},
+        {"id": "gemini-3.1-pro-preview", "label": "Gemini 3.1 Pro", "context": 1048576, "max_output": 65536},
         {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro", "context": 1048576, "max_output": 65535},
         {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "context": 1048576, "max_output": 65535},
         {"id": "gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash Lite", "context": 1048576, "max_output": 65535}
       ]
     },
-    "AWS Bedrock (Anthropic)": {
+    "AWS Bedrock": {
+      "provider_id": "bedrock",
       "models": [
         {"id": "global.anthropic.claude-opus-4-6-v1", "label": "Claude Opus 4.6 (Bedrock)", "context": 1000000, "max_output": 128000},
         {"id": "global.anthropic.claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (Bedrock)", "context": 1000000, "max_output": 64000},
         {"id": "global.anthropic.claude-opus-4-5-20251101-v1:0", "label": "Claude Opus 4.5 (Bedrock)", "context": 200000, "max_output": 64000},
         {"id": "global.anthropic.claude-sonnet-4-5-20250929-v1:0", "label": "Claude Sonnet 4.5 (Bedrock)", "context": 200000, "max_output": 64000},
-        {"id": "global.anthropic.claude-haiku-4-5-20251001-v1:0", "label": "Claude Haiku 4.5 (Bedrock)", "context": 200000, "max_output": 64000}
-      ]
-    },
-    "AWS Bedrock (Other)": {
-      "models": [
+        {"id": "global.anthropic.claude-haiku-4-5-20251001-v1:0", "label": "Claude Haiku 4.5 (Bedrock)", "context": 200000, "max_output": 64000},
         {"id": "global.amazon.nova-2-lite-v1:0", "label": "Amazon Nova 2 Lite", "context": 1000000, "max_output": 64000},
         {"id": "us.amazon.nova-premier-v1:0", "label": "Amazon Nova Premier", "context": 1000000, "max_output": 10000},
         {"id": "us.amazon.nova-pro-v1:0", "label": "Amazon Nova Pro", "context": 300000, "max_output": 10000}
