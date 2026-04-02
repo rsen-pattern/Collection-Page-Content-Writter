@@ -71,7 +71,7 @@ def init_session_state():
         "implementation_tracker": {},
         # Bifrost API config — load from secrets first, then allow override
         "bifrost_api_key": get_secret("BIFROST_API_KEY"),
-        "bifrost_base_url": get_secret("BIFROST_BASE_URL", "https://api.getbifrost.ai"),
+        "bifrost_base_url": get_secret("BIFROST_BASE_URL", "https://bifrost.pattern.com"),
         "selected_model": get_secret("BIFROST_DEFAULT_MODEL", "anthropic/claude-sonnet-4-6"),
         # DataForSEO (optional)
         "dataforseo_login": get_secret("DATAFORSEO_LOGIN"),

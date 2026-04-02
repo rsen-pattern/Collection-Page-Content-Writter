@@ -29,7 +29,7 @@ def _api_kwargs() -> dict:
     """Common kwargs for generate_content calls."""
     return {
         "api_key": st.session_state.bifrost_api_key,
-        "base_url": st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+        "base_url": st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
         "model": st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
     }
 

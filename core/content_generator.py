@@ -345,7 +345,7 @@ def generate_content(
     generation_type: str = "full",
     batch_faq_topics: list[str] = None,
     model: str = "anthropic/claude-sonnet-4-6",
-    base_url: str = "https://api.getbifrost.ai",
+    base_url: str = "https://bifrost.pattern.com",
 ) -> GeneratedContent:
     """Generate content via Bifrost API gateway (OpenAI-compatible).
 

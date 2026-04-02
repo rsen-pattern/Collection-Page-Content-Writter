@@ -201,7 +201,7 @@ if st.button(
         try:
             result, used_model = generate_content(
                 api_key=st.session_state.bifrost_api_key,
-                base_url=st.session_state.get("bifrost_base_url", "https://api.getbifrost.ai"),
+                base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
                 model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
                 brief=brief,
                 generation_type=type_map[generation_type],
