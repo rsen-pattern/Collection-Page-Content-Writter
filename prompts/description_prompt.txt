@@ -1,4 +1,4 @@
-Write a conversion-optimized, GEO-ready collection description for the following Shopify collection page. The goal is to capture mid-funnel shoppers who are comparing options, while creating structured content that AI search engines can easily extract and cite.
+Write a conversion-optimized, GEO-ready collection description for the following collection page. The goal is to capture mid-funnel shoppers who are comparing options, while creating structured content that AI search engines can easily extract and cite.
 
 COLLECTION CONTEXT:
 - Collection: {collection_name}
@@ -13,31 +13,40 @@ WORD COUNT & FORMAT:
 - Write for skimmers: use whitespace, bold key benefits, and descriptive subheadings
 - Use H2/H3 markdown headings to break up text every 75-100 words
 
+HEADING RULES:
+- Use descriptive, keyword-relevant headings that help shoppers navigate content
+- NEVER use structural template labels as headings (no "Hook", "BLUF Summary", "Feature-to-Benefit", "Trust Section")
+- Good: "SPF50+ options for sensitive skin", "Shop by format", "Delivery and returns"
+- Bad: "### Hook", "### BLUF Summary", "### Shop the Range"
+
 REQUIRED CONTENT ELEMENTS:
 - Reference at least {min_usps} of these brand USPs: {usps}
 - Include {min_product_links}-{max_product_links} internal product links as markdown links using exact-match descriptive anchor text
 - Include {min_collection_links}-{max_collection_links} related collection links as markdown links
 - Naturally include at least 1 secondary keyword
+- NEVER use (#) placeholder links — use real URLs from the provided list, or construct realistic relative paths from product/collection names
 
-SECTION-BY-SECTION STRUCTURE:
+INTERNAL STRUCTURE (follow this flow, but DO NOT use these labels as headings):
 
-1. HOOK (2-3 sentences): Open with a short paragraph that acknowledges the customer's need and immediately states {brand_name}'s value proposition. Naturally include the primary keyword. Do NOT open with a definition or "What is...?"
+1. Open with what this collection offers and who it's for. Include the primary keyword. No definitions.
 
-2. BLUF SUMMARY (2-3 sentences): Directly answer: "Who is this collection for and what makes it unique at {brand_name}?" This should be extractable by AI search engines as a standalone answer.
+2. In 2-3 sentences, answer: "What makes this range worth buying from {brand_name}?" Reference specific product features, materials, or formulations.
 
-3. FEATURE-TO-BENEFIT BLOCK: Take the brand's specific features and translate each into a tangible customer benefit. Use bold for key terms. Be specific — mention materials, processes, or guarantees unique to {brand_name}.
+3. Translate specific product features into tangible customer benefits. Bold key terms. Be specific about what makes these products different from competitors.
 
-4. PRODUCT & COLLECTION NAVIGATION: Guide shoppers deeper into the site. Introduce specific products using descriptive anchor text links. Connect to related collections with 1-2 sentence context for each link explaining what they'll find there.
+4. Guide shoppers to specific products and related collections. Write 1 sentence per link explaining what the product IS, not how the website works.
 
-5. TRUST & CONVERSION CLOSE: End with trust signals (shipping, returns, warranties) and a clear, natural call to action. Do NOT use generic "shop now" — be specific to the collection.
+5. Close with a trust signal and a CTA specific to this collection.
 
-RULES:
+CONTENT QUALITY RULES:
+- Every sentence must describe PRODUCTS or the BRAND — never the shopping/browsing experience
 - This content MUST include specific details about {brand_name} that could NOT appear on a competitor's page
 - Weave keywords in naturally — no stuffing
 - Use concrete verbs ("is", "has") not inflated ones ("boasts", "features", "serves as")
 - No AI-isms: "Additionally", "Whether you're looking for...", "testament", "landscape"
 - No forced triads or synonym cycling
-- Tone: knowledgeable, direct, helpful — like talking to a specialist in a good shop
+- No filler about "easy checkout", "comparing options", "browsing to checkout", "convenient delivery"
+- Tone: knowledgeable, direct, helpful — like talking to someone who actually uses these products
 
 OUTPUT:
-Return ONLY the collection description text with markdown formatting (headings, bold, links). No labels, no explanations, no meta-commentary.
+Return ONLY the collection description text with markdown formatting (descriptive headings, bold, real links). No labels, no explanations, no meta-commentary.

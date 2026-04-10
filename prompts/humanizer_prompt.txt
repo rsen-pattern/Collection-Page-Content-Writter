@@ -66,6 +66,12 @@ FILLER & HEDGING
 (23) Excessive hedging ("could potentially possibly")
 (24) Generic conclusions ("the future looks bright")
 
+ECOMMERCE-SPECIFIC FILLER (remove or replace with product info)
+(25) Website tour guide sentences: "makes it easy to compare", "smooth path from browsing to checkout", "convenient delivery options", "shop with confidence", "clear product info"
+(26) Shopping experience padding: anything describing HOW the website works rather than WHAT the products are
+(27) Template section labels used as headings: "### Hook", "### BLUF Summary", "### Feature-to-Benefit" — replace with descriptive headings
+(28) Placeholder links: (#) or empty href — flag these for correction
+
 Also remove any meta scaffolding ("In this article we will...", "This section discusses...").
 
 3) PASS 2 — FINAL REWRITE
