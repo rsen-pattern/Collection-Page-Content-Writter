@@ -16,7 +16,7 @@ BRAND CONTEXT:
 - USPs: {usps}
 - Voice Notes: {voice_notes}
 - Target Market: {target_market}
-
+{existing_content_block}
 GENERATE ALL OF THE FOLLOWING:
 
 1. SEO TITLE
@@ -57,6 +57,16 @@ Description rules:
 - Brand-specific: reference {brand_name} details, not generic advice
 {batch_exclusion_note}
 
+6. SUGGESTED HEADINGS
+- Provide 4-6 recommended H2/H3 headings for the page structure
+- Each heading should target a secondary keyword or address a key shopper intent
+- Format as a plain list, one per line
+
+7. SUGGESTED TAGS
+- Provide 5-10 relevant Shopify product/collection tags
+- Include primary keyword variations, product type terms, material/feature terms, and audience terms
+- Format as a comma-separated list
+
 OUTPUT FORMAT:
 ---SEO TITLE---
 [seo title]
@@ -79,3 +89,12 @@ A: [direct answer, 40-50 words]
 
 Q: [conversational question 3]
 A: [direct answer, 40-50 words]
+
+---SUGGESTED HEADINGS---
+[heading 1]
+[heading 2]
+[heading 3]
+[heading 4]
+
+---SUGGESTED TAGS---
+[comma-separated tags]

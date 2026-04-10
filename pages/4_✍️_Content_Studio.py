@@ -95,8 +95,8 @@ for i, col in enumerate(batch):
     st.markdown("---")
     st.markdown(f"## {col['collection_name']}")
 
-    tab_brief, tab_desc, tab_faq, tab_titles, tab_meta = st.tabs(
-        ["Brief", "Description", "FAQs", "Titles", "Meta"]
+    tab_brief, tab_desc, tab_faq, tab_titles, tab_meta, tab_headtags = st.tabs(
+        ["Brief", "Description", "FAQs", "Titles", "Meta", "Headings & Tags"]
     )
 
     with tab_brief:
@@ -149,6 +149,15 @@ for i, col in enumerate(batch):
             if paa_text.strip():
                 brief.paa_questions = [q.strip() for q in paa_text.strip().split("\n") if q.strip()]
 
+        existing_content = st.text_area(
+            "Existing Page Content (optional — paste current description for reference)",
+            value=brief.existing_content,
+            key=f"existing_{i}",
+            height=100,
+            help="The AI will use this as context to retain good details while improving structure and SEO.",
+        )
+        brief.existing_content = existing_content.strip()
+
         if st.button("Generate Full Brief Package", key=f"gen_full_{i}", type="primary"):
             with st.spinner("Generating content..."):
                 try:
@@ -164,6 +173,8 @@ for i, col in enumerate(batch):
                         "description": result.description,
                         "meta_description": result.meta_description,
                         "faqs": result.faqs,
+                        "suggested_headings": result.suggested_headings,
+                        "suggested_tags": result.suggested_tags,
                         "approved": False,
                     }
                     # Humanizer pass if enabled
@@ -323,6 +334,43 @@ for i, col in enumerate(batch):
             icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
             st.markdown(f"{icon} {vr.message}")
 
+    with tab_headtags:
+        st.markdown("### Suggested Headings")
+        headings = content.get("suggested_headings", [])
+        if headings:
+            updated_headings = []
+            for idx, heading in enumerate(headings):
+                h_val = st.text_input(
+                    f"H2/H3 #{idx + 1}",
+                    value=heading,
+                    key=f"heading_{i}_{idx}",
+                )
+                updated_headings.append(h_val)
+            content["suggested_headings"] = updated_headings
+
+            st.markdown("**Copy-ready heading structure:**")
+            heading_block = "\n".join(f"## {h}" for h in updated_headings if h.strip())
+            st.code(heading_block, language="markdown")
+        else:
+            st.info("Generate a Full Brief Package to get suggested headings.")
+
+        st.markdown("---")
+        st.markdown("### Suggested Tags")
+        tags = content.get("suggested_tags", [])
+        if tags:
+            tags_str = st.text_area(
+                "Tags (comma-separated, editable)",
+                value=", ".join(tags),
+                key=f"tags_{i}",
+                height=80,
+            )
+            content["suggested_tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
+
+            st.markdown("**Shopify tag format:**")
+            st.code(tags_str, language=None)
+        else:
+            st.info("Generate a Full Brief Package to get suggested tags.")
+
     # Approval
     st.markdown("---")
     ac1, ac2, ac3 = st.columns(3)
@@ -379,6 +427,8 @@ with ba1:
                             "description": result.description,
                             "meta_description": result.meta_description,
                             "faqs": result.faqs,
+                            "suggested_headings": result.suggested_headings,
+                            "suggested_tags": result.suggested_tags,
                             "approved": False,
                         }
                         # Humanizer pass if enabled

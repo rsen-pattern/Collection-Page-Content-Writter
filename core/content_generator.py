@@ -19,6 +19,8 @@ class GeneratedContent(BaseModel):
     description: str = ""
     meta_description: str = ""
     faqs: list[dict] = Field(default_factory=list)  # [{question, answer}]
+    suggested_headings: list[str] = Field(default_factory=list)
+    suggested_tags: list[str] = Field(default_factory=list)
     approved: bool = False
 
 
@@ -98,6 +100,16 @@ def build_full_brief_prompt(
             f"{', '.join(batch_faq_topics)}"
         )
 
+    existing_content_block = ""
+    if brief.existing_content:
+        existing_content_block = (
+            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
+            "The page currently has the following content. Use it as context — retain any "
+            "brand-specific facts, product details, or tone that works well, but rewrite and "
+            "improve rather than copying:\n"
+            f"```\n{brief.existing_content}\n```\n"
+        )
+
     return template.format(
         collection_name=brief.collection_name,
         primary_keyword=brief.primary_keyword,
@@ -121,6 +133,7 @@ def build_full_brief_prompt(
         max_collection_links=ci["description_collection_links_max"],
         faq_count=brief.faq_count,
         batch_exclusion_note=batch_note,
+        existing_content_block=existing_content_block,
     )
 
 
@@ -146,6 +159,16 @@ def build_description_prompt(
         else "No related collections — use placeholder names."
     )
 
+    existing_content_block = ""
+    if brief.existing_content:
+        existing_content_block = (
+            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
+            "The page currently has the following content. Use it as context — retain any "
+            "brand-specific facts, product details, or tone that works well, but rewrite and "
+            "improve rather than copying:\n"
+            f"```\n{brief.existing_content}\n```\n"
+        )
+
     return template.format(
         collection_name=brief.collection_name,
         primary_keyword=brief.primary_keyword,
@@ -163,6 +186,7 @@ def build_description_prompt(
         max_collection_links=ci["description_collection_links_max"],
         usps="\n".join(f"- {usp}" for usp in brief.brand_usps),
         brand_name=brief.brand_name,
+        existing_content_block=existing_content_block,
     )
 
 
@@ -216,6 +240,8 @@ def parse_full_brief_response(response_text: str) -> dict:
         "description": "",
         "meta_description": "",
         "faqs": [],
+        "suggested_headings": [],
+        "suggested_tags": [],
     }
 
     # Split into header/content pairs using the ---HEADER--- pattern
@@ -235,6 +261,19 @@ def parse_full_brief_response(response_text: str) -> dict:
             result["collection_title"] = content
         elif "META DESCRIPTION" in header or ("META" in header and "DESCRIPTION" in header):
             result["meta_description"] = content
+        elif "SUGGESTED HEADING" in header or header == "HEADINGS":
+            result["suggested_headings"] = [
+                line.strip().lstrip("-•* ") for line in content.split("\n")
+                if line.strip() and not line.strip().startswith("#")
+            ]
+        elif "SUGGESTED TAG" in header or header == "TAGS":
+            # Tags can be comma-separated on one line or one per line
+            if "," in content:
+                result["suggested_tags"] = [t.strip() for t in content.split(",") if t.strip()]
+            else:
+                result["suggested_tags"] = [
+                    line.strip().lstrip("-•* ") for line in content.split("\n") if line.strip()
+                ]
         elif "DESCRIPTION" in header:
             result["description"] = content
         elif "FAQ" in header:
@@ -482,6 +521,8 @@ def generate_content(
         result.description = parsed["description"]
         result.meta_description = parsed["meta_description"]
         result.faqs = parsed["faqs"]
+        result.suggested_headings = parsed.get("suggested_headings", [])
+        result.suggested_tags = parsed.get("suggested_tags", [])
     elif generation_type == "description":
         result.description = response_text.strip()
     elif generation_type == "titles":

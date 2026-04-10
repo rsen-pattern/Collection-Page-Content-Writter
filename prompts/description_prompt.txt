@@ -6,7 +6,7 @@ COLLECTION CONTEXT:
 - Secondary Keywords: {secondary_keywords}
 - Products to Link: {product_links}
 - Related Collections: {related_collections}
-
+{existing_content_block}
 WORD COUNT & FORMAT:
 - Target: {target_word_count} words (minimum {min_words}, maximum {max_words})
 - No paragraph may exceed 3 sentences
