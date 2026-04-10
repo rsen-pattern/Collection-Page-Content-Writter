@@ -1,4 +1,4 @@
-Generate a collection description for the following Shopify collection page.
+Write a conversion-optimized, GEO-ready collection description for the following Shopify collection page. The goal is to capture mid-funnel shoppers who are comparing options, while creating structured content that AI search engines can easily extract and cite.
 
 COLLECTION CONTEXT:
 - Collection: {collection_name}
@@ -7,20 +7,37 @@ COLLECTION CONTEXT:
 - Products to Link: {product_links}
 - Related Collections: {related_collections}
 
-TARGET:
-- Word count: {target_word_count} words (minimum {min_words}, maximum {max_words})
-- Must reference at least {min_usps} of these brand USPs: {usps}
-- Must include {min_product_links}-{max_product_links} internal product links as markdown links
-- Must include {min_collection_links}-{max_collection_links} related collection links as markdown links
-- Must naturally include at least 1 secondary keyword
+WORD COUNT & FORMAT:
+- Target: {target_word_count} words (minimum {min_words}, maximum {max_words})
+- No paragraph may exceed 3 sentences
+- Write for skimmers: use whitespace, bold key benefits, and descriptive subheadings
+- Use H2/H3 markdown headings to break up text every 75-100 words
+
+REQUIRED CONTENT ELEMENTS:
+- Reference at least {min_usps} of these brand USPs: {usps}
+- Include {min_product_links}-{max_product_links} internal product links as markdown links using exact-match descriptive anchor text
+- Include {min_collection_links}-{max_collection_links} related collection links as markdown links
+- Naturally include at least 1 secondary keyword
+
+SECTION-BY-SECTION STRUCTURE:
+
+1. HOOK (2-3 sentences): Open with a short paragraph that acknowledges the customer's need and immediately states {brand_name}'s value proposition. Naturally include the primary keyword. Do NOT open with a definition or "What is...?"
+
+2. BLUF SUMMARY (2-3 sentences): Directly answer: "Who is this collection for and what makes it unique at {brand_name}?" This should be extractable by AI search engines as a standalone answer.
+
+3. FEATURE-TO-BENEFIT BLOCK: Take the brand's specific features and translate each into a tangible customer benefit. Use bold for key terms. Be specific — mention materials, processes, or guarantees unique to {brand_name}.
+
+4. PRODUCT & COLLECTION NAVIGATION: Guide shoppers deeper into the site. Introduce specific products using descriptive anchor text links. Connect to related collections with 1-2 sentence context for each link explaining what they'll find there.
+
+5. TRUST & CONVERSION CLOSE: End with trust signals (shipping, returns, warranties) and a clear, natural call to action. Do NOT use generic "shop now" — be specific to the collection.
 
 RULES:
-- Write for shoppers first, search engines second
-- Do NOT open with "What is [product]?" or a dictionary-style definition
-- Do NOT write a generic buying guide
 - This content MUST include specific details about {brand_name} that could NOT appear on a competitor's page
 - Weave keywords in naturally — no stuffing
-- Use a warm, knowledgeable tone consistent with the brand voice
+- Use concrete verbs ("is", "has") not inflated ones ("boasts", "features", "serves as")
+- No AI-isms: "Additionally", "Whether you're looking for...", "testament", "landscape"
+- No forced triads or synonym cycling
+- Tone: knowledgeable, direct, helpful — like talking to a specialist in a good shop
 
 OUTPUT:
-Return ONLY the collection description text with markdown links. No headings, no labels, no explanations.
+Return ONLY the collection description text with markdown formatting (headings, bold, links). No labels, no explanations, no meta-commentary.

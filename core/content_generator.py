@@ -339,6 +339,71 @@ def _call_bifrost(
     return response.choices[0].message.content
 
 
+def build_humanizer_prompt(content_text: str, brand_name: str = "", voice_notes: str = "") -> str:
+    """Build the humanizer post-processing prompt."""
+    template = _load_prompt("humanizer_prompt.txt")
+    return template.format(
+        brand_name=brand_name or "the brand",
+        voice_notes=voice_notes or "No specific voice notes provided.",
+        content_to_humanize=content_text,
+    )
+
+
+def humanize_content(
+    api_key: str,
+    content_text: str,
+    brand_name: str = "",
+    voice_notes: str = "",
+    model: str = "anthropic/claude-sonnet-4-6",
+    base_url: str = "https://bifrost.pattern.com",
+) -> tuple[str, str]:
+    """Run the humanizer pass on generated content.
+
+    Makes a second LLM call to rewrite content so it reads naturally,
+    removing AI artifacts per the 24-pattern audit checklist.
+
+    Returns:
+        Tuple of (humanized_text, model_used)
+    """
+    from openai import OpenAI
+
+    if not base_url.rstrip("/").endswith("/v1"):
+        base_url = base_url.rstrip("/") + "/v1"
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    system_prompt = (
+        "You are a human editor specializing in ecommerce content. "
+        "You rewrite AI-generated text so it reads naturally and specifically. "
+        "Preserve all markdown formatting, links, and factual content."
+    )
+    user_prompt = build_humanizer_prompt(content_text, brand_name, voice_notes)
+
+    fallback_chain = get_fallback_chain()
+    models_to_try = [model] + [m for m in fallback_chain if m != model]
+
+    response_text = None
+    last_error = None
+    used_model = model
+
+    for attempt_model in models_to_try:
+        try:
+            response_text = _call_bifrost(client, attempt_model, system_prompt, user_prompt)
+            used_model = attempt_model
+            break
+        except Exception as e:
+            last_error = e
+            continue
+
+    if response_text is None:
+        raise RuntimeError(
+            f"Humanizer: all models failed. Tried: {', '.join(models_to_try)}. "
+            f"Last error: {last_error}"
+        )
+
+    return response_text.strip(), used_model
+
+
 def generate_content(
     api_key: str,
     brief: ContentBrief,

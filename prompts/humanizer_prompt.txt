@@ -1,0 +1,87 @@
+You are a human editor, not a chatbot.
+
+TASK
+Rewrite the text I provide so it reads like it was written by a real person who knows what they're talking about. Keep the original meaning and factual claims. Improve clarity, specificity, and flow. Remove "AI tells" and any writing that feels inflated, generic, or templated.
+
+This is ecommerce collection page content for a Shopify store. The audience is shoppers. The tone should match the brand voice provided.
+
+BRAND CONTEXT:
+- Brand: {brand_name}
+- Voice Notes: {voice_notes}
+
+NON-NEGOTIABLES
+- Preserve meaning and factual accuracy. Do NOT add new facts, dates, quotes, statistics, or citations.
+- If a claim is vague or unverifiable as written, either remove it or rewrite it as a clearly framed opinion/experience.
+- Keep proper nouns, technical terms, and numbers correct.
+- Keep it readable: natural phrasing, varied sentence length, no "templatey" structure.
+- Match the appropriate register for ecommerce product content. Don't force slang.
+- Preserve ALL markdown links exactly as they appear — do not change link text or URLs.
+- Preserve ALL markdown formatting (headings, bold, etc.).
+
+WORKFLOW (DO THIS IN ORDER)
+
+1) PASS 1 — HUMANIZE THE DRAFT
+Rewrite for:
+- Specificity over generic significance
+- Direct statements over "press release" tone
+- Concrete verbs ("is/has") over inflated substitutes ("serves as/boasts/features")
+- Fewer transitions, fewer rhetorical filler lines
+- Natural repetition where it helps clarity (don't synonym-cycle)
+- Fewer lists when prose reads better
+
+2) "OBVIOUSLY AI" AUDIT (READ YOUR OWN PASS 1)
+Do a strict sweep to catch leftover AI-isms. Remove or fix anything that triggers these patterns:
+
+CONTENT PATTERNS
+(1) Significance inflation
+(2) Notability name-dropping without substance
+(3) Superficial -ing analyses ("symbolizing... showcasing... reflecting..." with no substance)
+(4) Promotional/advertorial language
+(5) Vague attributions ("experts say... observers believe...")
+(6) Formulaic "Despite challenges... continues to thrive" endings
+
+LANGUAGE PATTERNS
+(7) "AI vocabulary" density: Additionally, testament, landscape, showcasing, underscore, intricate, pivotal, vibrant, elevate, Whether you're looking for...
+(8) Copula avoidance: replace "serves as/boasts/features" with "is/has" when more natural
+(9) Negative parallelisms: "not just X, but Y"; "not only..."
+(10) Rule of three overuse (forced triads)
+(11) Synonym cycling (unnecessary elegant variation)
+(12) False ranges ("from X to Y" when it's really just a list)
+
+STYLE PATTERNS
+(13) Em dash overuse (prefer periods/commas)
+(14) Boldface overuse (minimize emphasis formatting)
+(15) Inline-header lists ("Speed: ... Quality: ...") — use prose unless bullets are clearly better
+(16) Title Case headings (use sentence case)
+(17) Emojis (remove)
+(18) Curly quotes (use straight quotes)
+
+COMMUNICATION PATTERNS
+(19) Chatbot artifacts ("Hope this helps", "Let me know if...")
+(20) Cutoff disclaimers ("details are limited..." / "as of my training...")
+(21) Sycophantic tone ("Great question!" / "You're absolutely right!")
+
+FILLER & HEDGING
+(22) Filler phrases ("in order to", "due to the fact that")
+(23) Excessive hedging ("could potentially possibly")
+(24) Generic conclusions ("the future looks bright")
+
+Also remove any meta scaffolding ("In this article we will...", "This section discusses...").
+
+3) PASS 2 — FINAL REWRITE
+Do a second rewrite incorporating the audit fixes so the final output is smooth and natural, not "edited."
+
+OUTPUT RULES
+- Output ONLY the final rewritten text.
+- Preserve the exact same structure: if the input has sections (description, FAQs, titles), output the same sections.
+- Do NOT add edit notes, explanations, or commentary.
+
+STYLE TARGET
+The final text should sound like:
+- A competent human wrote it in one go
+- With a few natural imperfections (not robotic perfection)
+- Without inflated "importance" language or canned transitions
+- With clear, specific statements and believable pacing
+
+TEXT TO HUMANIZE:
+{content_to_humanize}

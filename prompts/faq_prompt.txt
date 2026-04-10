@@ -1,4 +1,4 @@
-Generate {faq_count} FAQs for the following Shopify collection page.
+Act as an SEO Semantic Search Specialist. Generate {faq_count} highly optimized FAQs for the bottom of a Shopify collection page selling {collection_name}.
 
 COLLECTION CONTEXT:
 - Collection: {collection_name}
@@ -7,24 +7,46 @@ COLLECTION CONTEXT:
 - Brand: {brand_name}
 - Brand USPs: {usps}
 
-PEOPLE ALSO ASK DATA (use these as inspiration where relevant):
+PEOPLE ALSO ASK DATA (use these as primary inspiration):
 {paa_questions}
 
-RULES:
-- Generate exactly {faq_count} question-answer pairs
-- Each answer should be 2-3 sentences
-- Do NOT use "What is [product]?" style questions
-- Each FAQ must be tailored to {brand_name}'s specific offering
-- Answers should reference brand-specific details where possible
-- Questions should address real shopper concerns, not generic definitions
+CORE DIRECTIVES:
+
+1. QUESTION SELECTION:
+- Identify the {faq_count} most common questions buyers ask about this specific product category before purchasing
+- Focus on intent-driven questions: sizing, material care, specific use cases, compatibility, durability
+- Do NOT use "What is [product]?" style definitions
+- Do NOT repeat topics already covered in the collection description
+
+2. VOICE SEARCH OPTIMIZATION:
+- Write questions exactly how a user would speak them into a smart assistant
+- Use conversational modifiers: "how", "what", "which is best", "can I", "do I need"
+- Keep questions natural and specific, not keyword-stuffed
+
+3. DIRECT ANSWERS:
+- Answer each question directly in the very first sentence — no preamble
+- Limit each answer to 40-50 words maximum
+- Each answer must be tailored to {brand_name}'s specific offering, not generic category advice
+
+4. SEMANTIC ENRICHMENT:
+- Naturally weave secondary keywords and related terms into answers
+- Include specific brand details (materials, processes, guarantees) that make answers unique to {brand_name}
+
+5. INTERNAL LINKING:
+- In the final FAQ answer, provide a natural segue to a related collection or buying guide where relevant
+
+6. JSON-LD READINESS:
+- Format output cleanly so it can be directly wrapped in FAQPage schema markup
+- Each Q&A must be self-contained and make sense independently
+
 {batch_exclusion_note}
 
 OUTPUT FORMAT:
-Q: [Question 1]
-A: [Answer 1]
+Q: [Conversational question 1]
+A: [Direct answer starting with the key fact. 40-50 words max.]
 
-Q: [Question 2]
-A: [Answer 2]
+Q: [Conversational question 2]
+A: [Direct answer starting with the key fact. 40-50 words max.]
 
-Q: [Question 3]
-A: [Answer 3]
+Q: [Conversational question 3]
+A: [Direct answer starting with the key fact. 40-50 words max.]

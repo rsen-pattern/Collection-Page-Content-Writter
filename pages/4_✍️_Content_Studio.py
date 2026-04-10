@@ -15,7 +15,7 @@ if not st.session_state.get("bifrost_api_key"):
     st.stop()
 
 from core.brief_builder import build_brief, ContentBrief
-from core.content_generator import generate_content, GeneratedContent
+from core.content_generator import generate_content, humanize_content, GeneratedContent
 from core.validator import (
     validate_description,
     validate_seo_title,
@@ -45,6 +45,15 @@ def _handle_result(result_tuple):
 
 batch = st.session_state.batch_collections
 client = st.session_state.client_profile
+
+# Humanizer toggle
+humanize_enabled = st.checkbox(
+    "Run humanizer pass on generated content",
+    value=st.session_state.get("humanize_enabled", False),
+    key="humanize_toggle",
+    help="When enabled, a second LLM call rewrites content to remove AI artifacts and improve natural readability.",
+)
+st.session_state.humanize_enabled = humanize_enabled
 
 # --- 4.1 Content Brief Review ---
 st.markdown("## Content Briefs")
@@ -149,7 +158,7 @@ for i, col in enumerate(batch):
                         generation_type="full",
                         batch_faq_topics=st.session_state.batch_faq_topics,
                     ))
-                    st.session_state.generated_content[content_key] = {
+                    generated = {
                         "seo_title": result.seo_title,
                         "collection_title": result.collection_title,
                         "description": result.description,
@@ -157,6 +166,18 @@ for i, col in enumerate(batch):
                         "faqs": result.faqs,
                         "approved": False,
                     }
+                    # Humanizer pass if enabled
+                    if st.session_state.get("humanize_enabled"):
+                        with st.spinner("Humanizing content..."):
+                            if generated["description"]:
+                                h_text, h_model = humanize_content(
+                                    **_api_kwargs(),
+                                    content_text=generated["description"],
+                                    brand_name=client.get("brand_name", ""),
+                                    voice_notes=client.get("voice_notes", ""),
+                                )
+                                generated["description"] = h_text
+                    st.session_state.generated_content[content_key] = generated
                     for faq in result.faqs:
                         st.session_state.batch_faq_topics.append(faq.get("question", ""))
                     st.rerun()
@@ -200,16 +221,35 @@ for i, col in enumerate(batch):
             icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
             st.markdown(f"{icon} {vr.message}")
 
-        if st.button("Regenerate Description", key=f"regen_desc_{i}"):
-            with st.spinner("Regenerating..."):
-                try:
-                    result = _handle_result(generate_content(
-                        **_api_kwargs(), brief=brief, generation_type="description",
-                    ))
-                    content["description"] = result.description
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed: {e}")
+        desc_btn1, desc_btn2 = st.columns(2)
+        with desc_btn1:
+            if st.button("Regenerate Description", key=f"regen_desc_{i}"):
+                with st.spinner("Regenerating..."):
+                    try:
+                        result = _handle_result(generate_content(
+                            **_api_kwargs(), brief=brief, generation_type="description",
+                        ))
+                        content["description"] = result.description
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed: {e}")
+        with desc_btn2:
+            if st.button("Humanize Description", key=f"humanize_desc_{i}"):
+                with st.spinner("Humanizing..."):
+                    try:
+                        h_text, h_model = humanize_content(
+                            **_api_kwargs(),
+                            content_text=content.get("description", ""),
+                            brand_name=client.get("brand_name", ""),
+                            voice_notes=client.get("voice_notes", ""),
+                        )
+                        content["description"] = h_text
+                        selected = st.session_state.get("selected_model", "")
+                        if h_model != selected:
+                            st.info(f"Humanizer fallback: used **{h_model}**")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Humanize failed: {e}")
 
     with tab_faq:
         faqs = content.get("faqs", [])
@@ -333,7 +373,7 @@ with ba1:
                             generation_type="full",
                             batch_faq_topics=st.session_state.batch_faq_topics,
                         ))
-                        st.session_state.generated_content[bk] = {
+                        generated = {
                             "seo_title": result.seo_title,
                             "collection_title": result.collection_title,
                             "description": result.description,
@@ -341,6 +381,17 @@ with ba1:
                             "faqs": result.faqs,
                             "approved": False,
                         }
+                        # Humanizer pass if enabled
+                        if st.session_state.get("humanize_enabled") and generated["description"]:
+                            with st.spinner(f"Humanizing {col['collection_name']}..."):
+                                h_text, _ = humanize_content(
+                                    **_api_kwargs(),
+                                    content_text=generated["description"],
+                                    brand_name=client.get("brand_name", ""),
+                                    voice_notes=client.get("voice_notes", ""),
+                                )
+                                generated["description"] = h_text
+                        st.session_state.generated_content[bk] = generated
                         for faq in result.faqs:
                             st.session_state.batch_faq_topics.append(faq.get("question", ""))
                     except Exception as e:
