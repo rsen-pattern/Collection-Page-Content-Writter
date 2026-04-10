@@ -1,4 +1,6 @@
-Generate a complete content package for the following Shopify collection page. All elements must be internally consistent — the description should reference the same USPs emphasized in the title, and FAQs should not repeat description content.
+Generate a complete, conversion-optimized content package for the following Shopify collection page. All elements must be internally consistent — the description should reference the same USPs emphasized in the title, and FAQs should complement (not repeat) description content.
+
+This content must be structured for both traditional SEO and Generative Engine Optimization (GEO) — AI search engines should be able to extract clean, factual answers from every section.
 
 COLLECTION CONTEXT:
 - Collection: {collection_name}
@@ -22,21 +24,37 @@ GENERATE ALL OF THE FOLLOWING:
 - 50-60 characters, primary keyword first, uses separator, differs from H1
 
 2. COLLECTION TITLE (H1)
-- Concise, includes primary keyword, differs from SEO title
+- Concise, includes primary keyword, differs from SEO title, under 8 words
 
 3. COLLECTION DESCRIPTION ({target_word_count} words target)
-- {min_words}-{max_words} words
+Structure the description with these sections:
+
+a) HOOK (2-3 sentences): Open by acknowledging the customer's need and stating {brand_name}'s value proposition. Include primary keyword naturally. No definitions.
+
+b) BLUF SUMMARY (2-3 sentences): Directly answer "Who is this collection for and what makes it unique?" — extractable by AI search as a standalone answer.
+
+c) FEATURE-TO-BENEFIT BLOCK: Translate {brand_name}'s specific features into tangible customer benefits. Bold key terms. Be specific about materials, processes, guarantees.
+
+d) PRODUCT & COLLECTION NAVIGATION: Guide shoppers to specific products ({min_product_links}-{max_product_links} product links) and related collections ({min_collection_links}-{max_collection_links} collection links) using descriptive anchor text with 1-2 sentence context per link.
+
+e) TRUST & CONVERSION CLOSE: End with trust signals and a natural CTA specific to this collection.
+
+Description rules:
+- {min_words}-{max_words} words, no paragraph over 3 sentences
 - Reference at least {min_usps} brand USPs
-- Include {min_product_links}-{max_product_links} internal product links as markdown
-- Include {min_collection_links}-{max_collection_links} related collection links as markdown
 - Naturally include secondary keywords
-- No definitions, no buying guides, must pass competitor test
+- Must pass the competitor test — include {brand_name}-specific details
+- Use concrete verbs, no AI-isms, no forced triads
 
 4. META DESCRIPTION
-- Under 155 characters, includes primary keyword, ends with CTA
+- Under 155 characters, includes primary keyword, ends with clear CTA
 
 5. FAQs ({faq_count} questions)
-- 2-3 sentence answers, no "What is?" questions, brand-specific
+- Voice search optimized: write questions as users would speak them
+- Direct answers: start each answer with the key fact, 40-50 words max
+- Semantically enriched: weave secondary keywords naturally
+- JSON-LD ready: each Q&A self-contained
+- Brand-specific: reference {brand_name} details, not generic advice
 {batch_exclusion_note}
 
 OUTPUT FORMAT:
@@ -47,17 +65,17 @@ OUTPUT FORMAT:
 [h1]
 
 ---DESCRIPTION---
-[description with markdown links]
+[structured description with markdown headings, bold, and links]
 
 ---META DESCRIPTION---
 [meta description]
 
 ---FAQ---
-Q: [question 1]
-A: [answer 1]
+Q: [conversational question 1]
+A: [direct answer, 40-50 words]
 
-Q: [question 2]
-A: [answer 2]
+Q: [conversational question 2]
+A: [direct answer, 40-50 words]
 
-Q: [question 3]
-A: [answer 3]
+Q: [conversational question 3]
+A: [direct answer, 40-50 words]

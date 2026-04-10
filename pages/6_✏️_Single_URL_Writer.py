@@ -164,6 +164,14 @@ with gen_col1:
         horizontal=True,
     )
 
+with gen_col2:
+    humanize_single = st.checkbox(
+        "Run humanizer pass",
+        value=False,
+        key="humanize_single_toggle",
+        help="A second LLM call rewrites the description to remove AI artifacts and improve natural readability.",
+    )
+
 type_map = {
     "Full Package (all elements)": "full",
     "Description Only": "description",
@@ -178,7 +186,7 @@ if st.button(
     use_container_width=True,
 ):
     from core.brief_builder import build_brief
-    from core.content_generator import generate_content
+    from core.content_generator import generate_content, humanize_content
 
     brief = build_brief(
         collection_url=collection_url,
@@ -209,6 +217,20 @@ if st.button(
             selected = st.session_state.get("selected_model", "")
             if used_model != selected:
                 st.info(f"Fallback: used **{used_model}** (selected model failed)")
+            # Humanizer pass if enabled
+            if humanize_single and result.description:
+                with st.spinner("Humanizing content..."):
+                    h_text, h_model = humanize_content(
+                        api_key=st.session_state.bifrost_api_key,
+                        base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
+                        model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
+                        content_text=result.description,
+                        brand_name=brand_name,
+                        voice_notes=voice_notes,
+                    )
+                    result.description = h_text
+                    if h_model != selected:
+                        st.info(f"Humanizer fallback: used **{h_model}**")
             st.session_state.single_url_content = {
                 "seo_title": result.seo_title,
                 "collection_title": result.collection_title,
@@ -291,6 +313,23 @@ if content:
             for vr in v.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
                 st.markdown(f"{icon} {vr.message}")
+
+            if st.button("Humanize Description", key="humanize_single_desc"):
+                from core.content_generator import humanize_content as _humanize
+                with st.spinner("Humanizing..."):
+                    try:
+                        h_text, h_model = _humanize(
+                            api_key=st.session_state.bifrost_api_key,
+                            base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
+                            model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
+                            content_text=desc,
+                            brand_name=content.get("brand_name", ""),
+                            voice_notes="",
+                        )
+                        content["description"] = h_text
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Humanize failed: {e}")
 
     # --- Titles ---
     with tab_titles:
