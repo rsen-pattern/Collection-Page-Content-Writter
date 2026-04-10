@@ -1,4 +1,4 @@
-Act as an SEO Semantic Search Specialist. Generate {faq_count} highly optimized FAQs for the bottom of a Shopify collection page selling {collection_name}.
+Generate {faq_count} highly optimized FAQs for the bottom of a collection page selling {collection_name}.
 
 COLLECTION CONTEXT:
 - Collection: {collection_name}
@@ -10,43 +10,41 @@ COLLECTION CONTEXT:
 PEOPLE ALSO ASK DATA (use these as primary inspiration):
 {paa_questions}
 
-CORE DIRECTIVES:
+RULES:
 
 1. QUESTION SELECTION:
-- Identify the {faq_count} most common questions buyers ask about this specific product category before purchasing
-- Focus on intent-driven questions: sizing, material care, specific use cases, compatibility, durability
+- Pick the {faq_count} most useful questions a buyer would ask before purchasing this specific product type
+- Focus on: sizing, ingredients/materials, specific use cases, compatibility, durability, care
 - Do NOT use "What is [product]?" style definitions
-- Do NOT repeat topics already covered in the collection description
+- Do NOT ask questions about the website, shipping, or checkout
 
 2. VOICE SEARCH OPTIMIZATION:
-- Write questions exactly how a user would speak them into a smart assistant
-- Use conversational modifiers: "how", "what", "which is best", "can I", "do I need"
-- Keep questions natural and specific, not keyword-stuffed
+- Write questions exactly how someone would say them out loud
+- Use conversational phrasing: "how", "what", "which is best", "can I", "do I need"
 
-3. DIRECT ANSWERS:
-- Answer each question directly in the very first sentence — no preamble
-- Limit each answer to 40-50 words maximum
-- Each answer must be tailored to {brand_name}'s specific offering, not generic category advice
+3. ANSWER RULES — CRITICAL:
+- Answer each question directly in the FIRST sentence — no preamble, no "Yes, [brand] offers..."
+- MAXIMUM 40-50 words per answer. Count every word. If over 50, cut.
+- Write about the PRODUCT, not the website or shopping experience
+- Do NOT pad with phrases like "check the product page", "you can also review", "which makes it easier to"
+- Every word must add information the shopper didn't already know
 
 4. SEMANTIC ENRICHMENT:
 - Naturally weave secondary keywords and related terms into answers
-- Include specific brand details (materials, processes, guarantees) that make answers unique to {brand_name}
+- Include specific product details (ingredients, SPF level, format, materials) that make answers unique to {brand_name}
 
-5. INTERNAL LINKING:
-- In the final FAQ answer, provide a natural segue to a related collection or buying guide where relevant
-
-6. JSON-LD READINESS:
-- Format output cleanly so it can be directly wrapped in FAQPage schema markup
-- Each Q&A must be self-contained and make sense independently
+5. BRAND SPECIFICITY:
+- Each answer must reference something specific to {brand_name}'s actual products
+- Generic category advice that could apply to any brand fails the test
 
 {batch_exclusion_note}
 
 OUTPUT FORMAT:
 Q: [Conversational question 1]
-A: [Direct answer starting with the key fact. 40-50 words max.]
+A: [Direct answer. 40-50 words max. Product-focused, no filler.]
 
 Q: [Conversational question 2]
-A: [Direct answer starting with the key fact. 40-50 words max.]
+A: [Direct answer. 40-50 words max. Product-focused, no filler.]
 
 Q: [Conversational question 3]
-A: [Direct answer starting with the key fact. 40-50 words max.]
+A: [Direct answer. 40-50 words max. Product-focused, no filler.]

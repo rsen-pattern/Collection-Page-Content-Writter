@@ -25,6 +25,7 @@ class ContentBrief(BaseModel):
     brand_name: str = ""
     store_url: str = ""
     target_market: str = "UK"
+    existing_content: str = ""
 
 
 def load_methodology_rules() -> dict:
@@ -95,6 +96,7 @@ def build_brief(
     related_collections: list[dict] = None,
     paa_questions: list[str] = None,
     keyword_difficulty: Optional[float] = None,
+    existing_content: str = "",
 ) -> ContentBrief:
     """Build a content brief for a collection."""
     if products_to_link is None:
@@ -124,6 +126,7 @@ def build_brief(
         brand_name=brand_name,
         store_url=store_url,
         target_market=target_market,
+        existing_content=existing_content,
     )
 
 

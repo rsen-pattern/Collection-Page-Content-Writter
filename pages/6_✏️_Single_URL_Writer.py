@@ -109,6 +109,12 @@ with ci_right:
         help="Higher difficulty → longer description target. 0-29: ~75 words, 30-49: ~88 words, 50+: ~125 words",
     )
 
+existing_content_text = st.text_area(
+    "Existing Page Content (optional — paste current collection description for reference)",
+    placeholder="Paste the current collection page content here. The AI will use it as context to retain good details while improving structure and SEO.",
+    height=120,
+)
+
 st.markdown("---")
 
 # ============================================================
@@ -185,6 +191,15 @@ if st.button(
     disabled=not (required_filled and has_api_key),
     use_container_width=True,
 ):
+    # Clear cached widget keys so new content shows on rerun
+    for wkey in ["single_desc", "single_seo_title", "single_h1", "single_meta", "single_tags_edit"]:
+        st.session_state.pop(wkey, None)
+    # Clear FAQ widget keys
+    for j in range(20):
+        st.session_state.pop(f"single_faq_q_{j}", None)
+        st.session_state.pop(f"single_faq_a_{j}", None)
+        st.session_state.pop(f"single_heading_{j}", None)
+
     from core.brief_builder import build_brief
     from core.content_generator import generate_content, humanize_content
 
@@ -203,6 +218,7 @@ if st.button(
         related_collections=related_collections,
         paa_questions=paa_questions,
         keyword_difficulty=float(keyword_difficulty),
+        existing_content=existing_content_text.strip(),
     )
 
     with st.spinner("Generating content..."):
@@ -237,6 +253,8 @@ if st.button(
                 "description": result.description,
                 "meta_description": result.meta_description,
                 "faqs": result.faqs,
+                "suggested_headings": result.suggested_headings,
+                "suggested_tags": result.suggested_tags,
                 "collection_name": collection_name,
                 "collection_url": collection_url,
                 "primary_keyword": primary_keyword,
@@ -271,8 +289,8 @@ if content:
         validate_faqs,
     )
 
-    tab_desc, tab_titles, tab_faq, tab_meta, tab_export = st.tabs(
-        ["Description", "Titles", "FAQs", "Meta Description", "Export"]
+    tab_desc, tab_titles, tab_faq, tab_meta, tab_headtags, tab_export = st.tabs(
+        ["Description", "Titles", "FAQs", "Meta Description", "Headings & Tags", "Export"]
     )
 
     # --- Description ---
@@ -407,6 +425,44 @@ if content:
             for vr in v.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
                 st.markdown(f"{icon} {vr.message}")
+
+    # --- Headings & Tags ---
+    with tab_headtags:
+        st.markdown("### Suggested Headings")
+        headings = content.get("suggested_headings", [])
+        if headings:
+            updated_headings = []
+            for idx, heading in enumerate(headings):
+                h_val = st.text_input(
+                    f"H2/H3 #{idx + 1}",
+                    value=heading,
+                    key=f"single_heading_{idx}",
+                )
+                updated_headings.append(h_val)
+            content["suggested_headings"] = updated_headings
+
+            st.markdown("**Copy-ready heading structure:**")
+            heading_block = "\n".join(f"## {h}" for h in updated_headings if h.strip())
+            st.code(heading_block, language="markdown")
+        else:
+            st.info("Generate a Full Package to get suggested headings.")
+
+        st.markdown("---")
+        st.markdown("### Suggested Tags")
+        tags = content.get("suggested_tags", [])
+        if tags:
+            tags_str = st.text_area(
+                "Tags (comma-separated, editable)",
+                value=", ".join(tags),
+                key="single_tags_edit",
+                height=80,
+            )
+            content["suggested_tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
+
+            st.markdown("**Shopify tag format:**")
+            st.code(tags_str, language=None)
+        else:
+            st.info("Generate a Full Package to get suggested tags.")
 
     # --- Export / Copy ---
     with tab_export:
