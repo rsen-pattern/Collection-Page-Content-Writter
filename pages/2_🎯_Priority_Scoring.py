@@ -14,6 +14,7 @@ from core.priority_scorer import (
     score_all_collections,
     identify_sub_collection_opportunities,
 )
+from core.sf_parser import derive_optimization_score, derive_nav_link_signal
 
 source_format = st.session_state.get("source_format", "")
 volume_only = source_format == "keyword_map"
@@ -37,6 +38,31 @@ st.markdown("## Collection Scoring")
 
 if not st.session_state.get("scored_collections") or st.button("Re-score Collections"):
     scored = score_all_collections(st.session_state.collection_groups, volume_only=volume_only)
+
+    # ── Apply SF-derived scores where crawl data is available ────────────────
+    sf_crawl_data = st.session_state.get("sf_crawl_data", {})
+    sf_overrides_applied = 0
+    if sf_crawl_data:
+        for sc in scored:
+            norm_url = sc.collection_url.rstrip("/").replace("http://", "https://")
+            sf_page = sf_crawl_data.get(norm_url)
+            if sf_page is None:
+                continue
+            sc.scores.current_optimization = derive_optimization_score(sf_page)
+            sc.has_optimization_data = True
+            nav_signal = derive_nav_link_signal(sf_page)
+            if nav_signal is not None:
+                sc.scores.homepage_nav_link = nav_signal
+            sc.total_score = sc.scores.total
+            sf_overrides_applied += 1
+        if sf_overrides_applied > 0:
+            scored.sort(key=lambda s: s.total_score, reverse=True)
+            st.info(
+                f"SF crawl data applied to **{sf_overrides_applied}** collections. "
+                "Current Optimization scores updated from crawl data. "
+                "Homepage Nav Link updated where signal was conclusive."
+            )
+
     st.session_state.scored_collections = scored
 
 scored = st.session_state.scored_collections
@@ -58,7 +84,7 @@ for sc in scored:
         "Striking Dist.": str(sc.scores.striking_distance) + ("*" if not sc.has_rank_data else ""),
         "Revenue": sc.scores.revenue_potential,
         "Nav Link": str(sc.scores.homepage_nav_link) + "*",
-        "Optimization": sc.scores.current_optimization,
+        "Optimization": str(sc.scores.current_optimization) + ("" if sc.has_optimization_data else "*"),
         "Competitive Gap": str(sc.scores.competitive_gap) + ("*" if not sc.has_difficulty_data else ""),
         "Volume": f"{sc.total_volume:,}",
         "Best Rank": sc.best_rank or "-",
