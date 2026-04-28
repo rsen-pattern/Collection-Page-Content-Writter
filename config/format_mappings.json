@@ -40,6 +40,22 @@
         "cpc": ["CPC"]
       }
     },
+    "keyword_map": {
+      "name": "Keyword Mapping Document",
+      "detection_columns": ["URL", "Target Keyword 1", "Search Volume"],
+      "alternative_detection": ["URL", "Target Keyword 1"],
+      "column_mapping": {
+        "url": ["URL"],
+        "keyword_1": ["Target Keyword 1"],
+        "volume_1": ["Search Volume"],
+        "keyword_2": ["Target Keyword 2"],
+        "volume_2": ["Search Volume.1"],
+        "keyword_3": ["Target Keyword 3"],
+        "volume_3": ["Search Volume.2"],
+        "keyword_4": ["Target Keyword 4"],
+        "volume_4": ["Search Volume.3"]
+      }
+    },
     "custom": {
       "name": "Custom Format",
       "detection_columns": [],
