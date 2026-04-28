@@ -62,6 +62,7 @@ def init_session_state():
         # Scoring
         "scored_collections": [],
         "batch_collections": [],
+        "batch_mode": "",
         # Audit
         "audit_results": {},
         # Content
