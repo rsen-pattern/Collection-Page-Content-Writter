@@ -46,6 +46,19 @@ def _handle_result(result_tuple):
 batch = st.session_state.batch_collections
 client = st.session_state.client_profile
 
+# Time estimate banner for large batches
+if len(batch) > 10:
+    est_mins = round(len(batch) * 12 / 60, 1)
+    est_hours = round(est_mins / 60, 1)
+    time_str = f"~{est_hours} hours" if est_mins > 90 else f"~{est_mins} mins"
+    humanizer_note = " With humanizer enabled, multiply by ~1.8×." if st.session_state.get("humanize_enabled") else ""
+    st.info(
+        f"**Full Run: {len(batch)} collections queued.**  "
+        f"Estimated generation time: {time_str} at ~12 seconds per collection.  "
+        "Generation runs sequentially — keep this tab open. "
+        f"Already-generated collections are skipped if you click Generate All again.{humanizer_note}"
+    )
+
 # Humanizer toggle
 humanize_enabled = st.checkbox(
     "Run humanizer pass on generated content",

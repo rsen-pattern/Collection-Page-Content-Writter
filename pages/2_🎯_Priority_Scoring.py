@@ -145,7 +145,31 @@ st.markdown("---")
 
 # --- 2.2 Batch Builder ---
 st.markdown("## Batch Builder")
-st.markdown("Select **3-5 collections** for the current optimization batch.")
+
+mode = st.radio(
+    "Select a run mode",
+    ["🧪 Test Run (1–2 collections)", "📋 Standard Batch (3–5)", "🚀 Full Run (all or custom)"],
+    horizontal=True,
+    help=(
+        "Test Run: validate prompts and brand voice on 1-2 collections first. "
+        "Standard Batch: focused review-as-you-go session. "
+        "Full Run: generate all collections sequentially in Step 4."
+    ),
+)
+
+# Select All / Clear All for Full Run mode
+if "Full Run" in mode:
+    sa_col1, sa_col2, _ = st.columns([1, 1, 4])
+    with sa_col1:
+        if st.button("Select All", key="select_all_btn"):
+            for i in range(len(scored)):
+                st.session_state[f"batch_{i}"] = True
+            st.rerun()
+    with sa_col2:
+        if st.button("Clear All", key="clear_all_btn"):
+            for i in range(len(scored)):
+                st.session_state[f"batch_{i}"] = False
+            st.rerun()
 
 batch_selections = []
 for i, sc in enumerate(scored):
@@ -158,14 +182,47 @@ for i, sc in enumerate(scored):
 
 selected_count = sum(batch_selections)
 
-if selected_count < 3:
-    st.warning(f"Select at least 3 collections ({selected_count}/3 minimum)")
-elif selected_count > 5:
-    st.warning(f"Recommended maximum is 5 collections ({selected_count} selected)")
-else:
-    st.success(f"{selected_count} collections selected for this batch")
+if "Test Run" in mode:
+    if selected_count == 0:
+        st.info("Select 1–2 collections to test your setup before a full run.")
+    elif selected_count <= 2:
+        st.success(f"{selected_count} collection(s) selected for test run.")
+    else:
+        st.warning(
+            f"{selected_count} selected — Test Run works best with 1–2 collections. "
+            "Switch to Standard Batch or Full Run if intentional."
+        )
 
-if st.button("Confirm Batch", type="primary", disabled=selected_count < 1):
+elif "Standard Batch" in mode:
+    if selected_count == 0:
+        st.info("Select 3–5 collections for this batch.")
+    elif selected_count < 3:
+        st.warning(f"Select at least 3 collections ({selected_count}/3 minimum for Standard Batch).")
+    elif selected_count > 5:
+        st.warning(
+            f"{selected_count} selected — recommended maximum for Standard Batch is 5. "
+            "Switch to Full Run mode to remove this limit."
+        )
+    else:
+        st.success(f"{selected_count} collections selected.")
+
+elif "Full Run" in mode:
+    if selected_count == 0:
+        st.info(f"Select collections manually or use Select All ({len(scored)} available).")
+    else:
+        est_mins = round(selected_count * 12 / 60, 1)
+        st.success(
+            f"{selected_count} collections selected for full run. "
+            f"Estimated generation time: ~{est_mins} mins at 12s per collection."
+        )
+
+mode_label = {
+    "Test Run" in mode: "Confirm Test Run",
+    "Standard" in mode: "Confirm Batch",
+    "Full Run" in mode: "Confirm Full Run",
+}.get(True, "Confirm Batch")
+
+if st.button(mode_label, type="primary", disabled=selected_count < 1):
     batch = []
     for i, selected in enumerate(batch_selections):
         scored[i].in_batch = selected
@@ -185,7 +242,8 @@ if st.button("Confirm Batch", type="primary", disabled=selected_count < 1):
             })
 
     st.session_state.batch_collections = batch
-    st.success(f"Batch confirmed: {len(batch)} collections ready for audit and content generation.")
+    st.session_state.batch_mode = mode
+    st.success(f"Confirmed: {len(batch)} collections ready.")
 
 st.markdown("---")
 

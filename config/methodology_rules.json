@@ -42,8 +42,8 @@
     "no_keyword_stuffing": true
   },
   "priority": {
-    "batch_size_min": 3,
-    "batch_size_max": 5,
+    "batch_size_min": 1,
+    "batch_size_max": null,
     "striking_distance_range": [8, 17],
     "striking_distance_secondary": [18, 25],
     "meta_description_top_collections": 10,
