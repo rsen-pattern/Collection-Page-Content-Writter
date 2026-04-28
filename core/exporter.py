@@ -155,6 +155,55 @@ def export_shopify_csv(
     return buffer
 
 
+def export_keyword_map_roundtrip(
+    collections: list[dict],
+    client_name: str = "",
+) -> io.BytesIO:
+    """Export in the same wide format as the keyword mapping document input.
+
+    Columns: URL | Target Keyword 1 | Search Volume | Target Keyword 2 |
+    Search Volume.1 | ... plus optimized content columns appended on the right.
+    """
+    rows = []
+    for col in collections:
+        content = col.get("content", {})
+        # Use raw dicts when available (preserves volumes); fall back to string list
+        sec_kws = col.get("secondary_keywords_raw") or col.get("secondary_keywords", [])
+        sec_kw_list = [
+            kw if isinstance(kw, str) else kw.get("keyword", "") for kw in sec_kws
+        ]
+        sec_vol_list = [
+            kw.get("search_volume", "") if isinstance(kw, dict) else "" for kw in sec_kws
+        ]
+        row = {
+            "URL": col.get("collection_url", ""),
+            "Target Keyword 1": col.get("primary_keyword", ""),
+            "Search Volume": col.get("primary_keyword_volume") or col.get("search_volume", ""),
+        }
+        for idx in range(3):  # Keywords 2, 3, 4
+            kw_num = idx + 2
+            row[f"Target Keyword {kw_num}"] = sec_kw_list[idx] if idx < len(sec_kw_list) else ""
+            row[f"Search Volume.{idx + 1}"] = sec_vol_list[idx] if idx < len(sec_vol_list) else ""
+        row["Optimized SEO Title"] = content.get("seo_title", "")
+        row["Optimized H1"] = content.get("collection_title", "")
+        row["Optimized Description"] = content.get("description", "")
+        row["Optimized Meta Description"] = content.get("meta_description", "")
+        row["Status"] = "Done" if content.get("approved") else "In Review"
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Keyword Map", index=False)
+        ws = writer.sheets["Keyword Map"]
+        for column in ws.columns:
+            ws.column_dimensions[column[0].column_letter].width = min(
+                max(len(str(c.value or "")) for c in column) + 2, 60
+            )
+    buffer.seek(0)
+    return buffer
+
+
 def generate_copy_paste_cards(collections: list[dict]) -> list[dict]:
     """Generate copy-paste card data for each collection."""
     cards = []

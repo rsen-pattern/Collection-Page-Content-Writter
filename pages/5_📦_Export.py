@@ -14,6 +14,7 @@ from core.exporter import (
     export_keyword_map,
     export_content_delivery,
     export_shopify_csv,
+    export_keyword_map_roundtrip,
     generate_copy_paste_cards,
 )
 
@@ -27,9 +28,11 @@ for col in batch:
     url = col["collection_url"]
     col_content = content.get(url, {})
 
-    # Get secondary keywords as strings
+    # Get secondary keywords as strings (for standard exporters)
+    # and as original dicts (for round-trip exporter)
     sec_kws = []
-    for kw in col.get("secondary_keywords", []):
+    sec_kws_raw = col.get("secondary_keywords", [])
+    for kw in sec_kws_raw:
         if isinstance(kw, dict):
             sec_kws.append(kw.get("keyword", ""))
         else:
@@ -39,7 +42,9 @@ for col in batch:
         "collection_url": url,
         "collection_name": col["collection_name"],
         "primary_keyword": col["primary_keyword"],
+        "primary_keyword_volume": col.get("primary_keyword_volume"),
         "secondary_keywords": sec_kws,
+        "secondary_keywords_raw": sec_kws_raw,
         "search_volume": col.get("total_volume", ""),
         "current_rank": col.get("best_rank", ""),
         "keyword_difficulty": "",
@@ -61,6 +66,24 @@ st.markdown("---")
 
 # --- 5.1 Export Formats ---
 st.markdown("## Export Formats")
+
+source_format = st.session_state.get("source_format", "")
+
+if source_format == "keyword_map":
+    st.markdown("### Keyword Mapping Round-Trip (XLSX)")
+    st.markdown(
+        "Exports in the same format as your original keyword mapping document — "
+        "same column structure with optimized content columns appended on the right."
+    )
+    if st.button("Generate Round-Trip Export", type="primary"):
+        buffer = export_keyword_map_roundtrip(export_collections, client.get("brand_name", ""))
+        st.download_button(
+            label="Download Round-Trip Keyword Map",
+            data=buffer,
+            file_name=f"keyword_map_optimized_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    st.markdown("---")
 
 ec1, ec2, ec3 = st.columns(3)
 
