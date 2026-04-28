@@ -50,6 +50,7 @@ class ScoredCollection(BaseModel):
     has_rank_data: bool = True
     has_difficulty_data: bool = True
     has_click_data: bool = True
+    has_optimization_data: bool = False  # True when current_optimization came from SF data
 
     def model_post_init(self, __context):
         self.total_score = self.scores.total

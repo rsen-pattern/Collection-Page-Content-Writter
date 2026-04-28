@@ -1,8 +1,14 @@
 """Step 3: Automated Audit."""
 
+import pandas as pd
 import streamlit as st
 
 from core.scraper import scrape_collection_page
+from core.sf_parser import (
+    AuditFlag,
+    derive_audit_flags,
+    parse_screaming_frog_csv,
+)
 
 
 st.title("Step 3: Automated Audit")
@@ -28,6 +34,40 @@ st.info(
 )
 if st.button("⏭ Skip Audit — Proceed to Content Studio", type="secondary"):
     st.switch_page("pages/4_✍️_Content_Studio.py")
+
+st.markdown("---")
+
+# ── Screaming Frog Upload ─────────────────────────────────────────────────────
+with st.expander("📂 Upload Screaming Frog Crawl Data (optional)", expanded=False):
+    st.markdown(
+        "Upload a Screaming Frog **internal_html.csv** export to auto-populate "
+        "audit fields and surface pre-flight issues (missing meta, duplicate H1, "
+        "non-indexable pages, title length violations) before running the full audit."
+    )
+    sf_file = st.file_uploader(
+        "Screaming Frog CSV",
+        type=["csv"],
+        key="sf_upload",
+        help="Export from Screaming Frog: Internal > HTML filter, then Bulk Export.",
+    )
+    if sf_file is not None:
+        try:
+            sf_df = pd.read_csv(sf_file)
+            sf_data = parse_screaming_frog_csv(sf_df)
+            st.session_state.sf_crawl_data = sf_data
+            st.success(
+                f"Loaded {len(sf_data)} pages from SF crawl. "
+                "Pre-flight flags and field pre-population are now active below."
+            )
+        except ValueError as e:
+            st.error(str(e))
+        except Exception as e:
+            st.error(f"Failed to parse SF CSV: {e}")
+    elif st.session_state.get("sf_crawl_data"):
+        st.caption(
+            f"SF data already loaded — {len(st.session_state.sf_crawl_data)} pages. "
+            "Upload a new file to replace it."
+        )
 
 st.markdown("---")
 
@@ -79,6 +119,8 @@ if scrape_all_clicked:
     st.rerun()
 
 # ── Per-collection data input ─────────────────────────────────────────────────
+sf_crawl_data = st.session_state.get("sf_crawl_data", {})
+
 for i, col in enumerate(batch):
     with st.expander(f"📄 {col['collection_name']}", expanded=i == 0):
         url = col["collection_url"]
@@ -109,12 +151,40 @@ for i, col in enumerate(batch):
                 st.session_state.scrape_results = results
             st.rerun()
 
-        # Helper: scraped value first, then previously saved audit input, then empty
-        def _default(field_key, scrape_attr, _sr=scrape_result, _url=url):
+        # ── Pre-flight flags from SF data ─────────────────────────────────────
+        norm_url = url.rstrip("/").replace("http://", "https://")
+        sf_page = sf_crawl_data.get(norm_url)
+
+        if sf_page is not None:
+            flags = derive_audit_flags(sf_page)
+            if flags:
+                st.markdown("**Pre-Flight Issues (from SF crawl data):**")
+                for flag in flags:
+                    icon = "❌" if flag.severity == "error" else "⚠️"
+                    st.markdown(f"{icon} {flag.message}")
+            else:
+                st.caption("✅ No pre-flight issues detected from SF data.")
+
+            sf_metric_cols = st.columns(4)
+            with sf_metric_cols[0]:
+                st.metric("Word Count", sf_page.word_count if sf_page.word_count is not None else "N/A")
+            with sf_metric_cols[1]:
+                st.metric("Inlinks", sf_page.inlinks if sf_page.inlinks is not None else "N/A")
+            with sf_metric_cols[2]:
+                st.metric("Crawl Depth", sf_page.crawl_depth if sf_page.crawl_depth is not None else "N/A")
+            with sf_metric_cols[3]:
+                st.metric("Status", sf_page.status_code if sf_page.status_code is not None else "N/A")
+
+        # Helper: live scrape first, then SF data, then previously saved audit input
+        def _default(field_key, scrape_attr, sf_attr=None, _sr=scrape_result, _url=url, _sf=sf_page):
             if _sr and _sr.success:
                 scraped_val = getattr(_sr, scrape_attr, "")
                 if scraped_val:
                     return scraped_val
+            if _sf and sf_attr:
+                sf_val = getattr(_sf, sf_attr, "")
+                if sf_val:
+                    return str(sf_val)
             return (
                 st.session_state.audit_results
                 .get(_url, {})
@@ -128,17 +198,17 @@ for i, col in enumerate(batch):
             seo_title = st.text_input(
                 "Current SEO Title",
                 key=f"audit_seo_title_{i}",
-                value=_default("seo_title", "seo_title"),
+                value=_default("seo_title", "seo_title", "seo_title"),
             )
             h1 = st.text_input(
                 "Current H1 / Collection Title",
                 key=f"audit_h1_{i}",
-                value=_default("h1", "h1"),
+                value=_default("h1", "h1", "h1"),
             )
             meta_desc = st.text_input(
                 "Current Meta Description",
                 key=f"audit_meta_{i}",
-                value=_default("meta_description", "meta_description"),
+                value=_default("meta_description", "meta_description", "meta_description"),
             )
 
         with ac2:

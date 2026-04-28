@@ -66,6 +66,7 @@ def init_session_state():
         # Audit
         "audit_results": {},
         "scrape_results": {},
+        "sf_crawl_data": {},
         # Content
         "content_briefs": {},
         "generated_content": {},
