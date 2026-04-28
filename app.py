@@ -66,7 +66,11 @@ def init_session_state():
         # Audit
         "audit_results": {},
         "scrape_results": {},
+        "scrape_tiers": {},
         "sf_crawl_data": {},
+        # Scraper API keys — optional, tiers without a key are skipped
+        "webscraping_ai_key": get_secret("WEBSCRAPING_AI_KEY", ""),
+        "scraperapi_key": get_secret("SCRAPERAPI_KEY", ""),
         # Content
         "content_briefs": {},
         "generated_content": {},

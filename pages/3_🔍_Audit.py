@@ -3,7 +3,11 @@
 import pandas as pd
 import streamlit as st
 
-from core.scraper import scrape_collection_page
+from core.scraper import (
+    scrape_collection_page,
+    scrape_with_fallback,
+    FallbackScrapeResult,
+)
 from core.sf_parser import (
     AuditFlag,
     derive_audit_flags,
@@ -69,6 +73,45 @@ with st.expander("📂 Upload Screaming Frog Crawl Data (optional)", expanded=Fa
             "Upload a new file to replace it."
         )
 
+# ── Scraper API Keys ──────────────────────────────────────────────────────────
+with st.expander("🔑 Scraper API Keys", expanded=False):
+    st.caption(
+        "Configure API keys to enable fallback scraping when direct requests are blocked. "
+        "Keys entered here are stored for this session only. "
+        "To persist across sessions, add them to Streamlit secrets."
+    )
+
+    st.markdown("**WebScraping.AI** — 2,000 free credits/month")
+    wsai_input = st.text_input(
+        "WebScraping.AI API Key",
+        value=st.session_state.get("webscraping_ai_key", ""),
+        type="password",
+        key="wsai_key_input",
+        placeholder="Paste your key from webscraping.ai dashboard",
+    )
+    if wsai_input != st.session_state.get("webscraping_ai_key", ""):
+        st.session_state.webscraping_ai_key = wsai_input
+
+    st.markdown("---")
+
+    st.markdown("**ScraperAPI** — 1,000 free credits/month")
+    sapi_input = st.text_input(
+        "ScraperAPI Key",
+        value=st.session_state.get("scraperapi_key", ""),
+        type="password",
+        key="sapi_key_input",
+        placeholder="Paste your key from scraperapi.com dashboard",
+    )
+    if sapi_input != st.session_state.get("scraperapi_key", ""):
+        st.session_state.scraperapi_key = sapi_input
+
+    active_tiers = ["Direct requests"]
+    if st.session_state.get("webscraping_ai_key"):
+        active_tiers.append("WebScraping.AI")
+    if st.session_state.get("scraperapi_key"):
+        active_tiers.append("ScraperAPI")
+    st.caption(f"Active fallback tiers: {', '.join(active_tiers)}")
+
 st.markdown("---")
 
 st.markdown(f"## Audit {len(batch)} Collections in Batch")
@@ -76,6 +119,14 @@ st.markdown(
     "Click **Scrape All Pages** to auto-populate fields from the live site, "
     "or enter page data manually below."
 )
+
+
+def _scraper_keys() -> dict:
+    return {
+        "webscraping_ai_key": st.session_state.get("webscraping_ai_key", ""),
+        "scraperapi_key": st.session_state.get("scraperapi_key", ""),
+    }
+
 
 # ── Scrape All button ─────────────────────────────────────────────────────────
 scrape_col1, scrape_col2 = st.columns([2, 5])
@@ -95,17 +146,20 @@ with scrape_col2:
 if scrape_all_clicked:
     progress = st.progress(0, text="Starting scrape...")
     scrape_results = {}
+    scrape_tiers = st.session_state.get("scrape_tiers", {})
     for idx, col in enumerate(batch):
         url = col["collection_url"]
         progress.progress(
             idx / len(batch),
             text=f"Scraping {idx + 1}/{len(batch)}: {col['collection_name']}...",
         )
-        result = scrape_collection_page(url)
-        scrape_results[url] = result
+        fallback = scrape_with_fallback(url, **_scraper_keys())
+        scrape_results[url] = fallback.data
+        scrape_tiers[url] = fallback.tier_used
     progress.progress(1.0, text="Scrape complete.")
 
     st.session_state.scrape_results = scrape_results
+    st.session_state.scrape_tiers = scrape_tiers
 
     success_count = sum(1 for r in scrape_results.values() if r.success)
     fail_count = len(scrape_results) - success_count
@@ -121,14 +175,20 @@ if scrape_all_clicked:
 # ── Per-collection data input ─────────────────────────────────────────────────
 sf_crawl_data = st.session_state.get("sf_crawl_data", {})
 
+_tier_labels = {
+    "direct": "direct",
+    "webscraping_ai": "WebScraping.AI",
+    "scraperapi": "ScraperAPI",
+}
+
 for i, col in enumerate(batch):
     with st.expander(f"📄 {col['collection_name']}", expanded=i == 0):
         url = col["collection_url"]
         st.markdown(f"**URL:** {url}")
         st.markdown(f"**Primary Keyword:** {col['primary_keyword']}")
 
-        # Per-collection scrape button
         scrape_result = st.session_state.get("scrape_results", {}).get(url)
+        tier_used = st.session_state.get("scrape_tiers", {}).get(url, "")
 
         btn_col, status_col = st.columns([1, 4])
         with btn_col:
@@ -136,19 +196,24 @@ for i, col in enumerate(batch):
         with status_col:
             if scrape_result is not None:
                 if scrape_result.success:
+                    tier_label = _tier_labels.get(tier_used, "")
+                    via = f" via {tier_label}" if tier_label and tier_label != "direct" else ""
                     st.caption(
-                        f"✅ Scraped — {scrape_result.fields_found}/4 fields found. "
+                        f"✅ Scraped{via} — {scrape_result.fields_found}/4 fields found. "
                         "Edit any field below before running the audit."
                     )
                 else:
                     st.caption(f"❌ Scrape failed: {scrape_result.error}")
+            else:
+                st.caption("Not yet scraped.")
 
         if scrape_clicked:
             with st.spinner(f"Scraping {col['collection_name']}..."):
-                result = scrape_collection_page(url)
+                fallback = scrape_with_fallback(url, **_scraper_keys())
                 results = st.session_state.get("scrape_results", {})
-                results[url] = result
+                results[url] = fallback.data
                 st.session_state.scrape_results = results
+                st.session_state.setdefault("scrape_tiers", {})[url] = fallback.tier_used
             st.rerun()
 
         # ── Pre-flight flags from SF data ─────────────────────────────────────
