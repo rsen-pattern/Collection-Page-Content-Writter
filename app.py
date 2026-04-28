@@ -65,6 +65,7 @@ def init_session_state():
         "batch_mode": "",
         # Audit
         "audit_results": {},
+        "scrape_results": {},
         # Content
         "content_briefs": {},
         "generated_content": {},
