@@ -58,6 +58,7 @@ def init_session_state():
         "normalized_data": None,
         "source_format": None,
         "collection_groups": [],
+        "skipped_collections": [],
         # Scoring
         "scored_collections": [],
         "batch_collections": [],

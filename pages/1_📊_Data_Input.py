@@ -84,42 +84,73 @@ uploaded_file = st.file_uploader(
     help="Accepted formats: GSC queries+pages, Ahrefs organic keywords, SEMrush organic research, custom format",
 )
 
+_FORMAT_LABELS = {
+    "gsc": "Google Search Console",
+    "ahrefs": "Ahrefs",
+    "semrush": "SEMrush",
+    "keyword_map": "Keyword Mapping Document",
+    "custom": "Custom Format",
+}
+
 if uploaded_file is not None:
-    from core.data_ingestion import ingest_file, detect_format, read_upload
+    from core.data_ingestion import (
+        detect_format,
+        read_upload,
+        normalize_dataframe,
+        group_by_collection,
+        normalize_keyword_map,
+        load_format_mappings,
+        _find_column,
+    )
 
     try:
         raw_df = read_upload(uploaded_file)
         source_format = detect_format(raw_df)
+        format_label = _FORMAT_LABELS.get(source_format, source_format.upper())
 
-        st.success(f"Detected format: **{source_format.upper()}** ({len(raw_df)} rows)")
+        st.success(f"Detected format: **{format_label}** ({len(raw_df)} rows)")
 
         # Show raw preview
         with st.expander("Raw Data Preview"):
             st.dataframe(raw_df.head(20))
 
-        from core.data_ingestion import normalize_dataframe, group_by_collection, load_format_mappings, _find_column, normalize_keyword_map
-
         if source_format == "keyword_map":
-            # --- Keyword Mapping format: fully auto-handled, no dropdowns needed ---
-            st.markdown("### Column Mapping")
+            # --- Keyword Mapping format: fully auto-handled, no dropdowns ---
+            st.markdown("### Keyword Mapping Document — Auto Configuration")
             st.info(
-                "**Keyword Mapping format detected** — column assignments are automatic. "
-                "Keywords 1–4 and their search volumes will be read directly from the file."
+                "Column mapping is automatic for this format. "
+                "Keywords 1–4 and their volumes have been detected. "
+                "Click **Process Data** to load all collections."
             )
 
             if st.button("Process Data", type="primary", disabled=not profile_valid):
-                groups = normalize_keyword_map(raw_df)
-                skipped = len(raw_df) - len(groups)
+                groups, skipped = normalize_keyword_map(raw_df)
+
+                no_kw_count = sum(1 for s in skipped if s.reason == "no_keywords")
+                zero_vol_count = sum(1 for s in skipped if s.reason == "zero_volume")
 
                 st.session_state.normalized_data = pd.DataFrame()
                 st.session_state.source_format = source_format
                 st.session_state.collection_groups = groups
+                st.session_state.skipped_collections = skipped
                 st.session_state.raw_data = raw_df
 
                 st.success(
-                    f"Keyword Mapping format detected — **{len(groups)} collections loaded**, "
-                    f"{skipped} skipped (no keywords)"
+                    f"Loaded **{len(groups)} collections**. "
+                    + (f"**{no_kw_count}** skipped (no keywords). " if no_kw_count else "")
+                    + (f"**{zero_vol_count}** flagged (zero volume)." if zero_vol_count else "")
                 )
+
+                if skipped:
+                    with st.expander(f"Skipped / Flagged Collections ({len(skipped)})"):
+                        for s in skipped:
+                            label = {
+                                "no_keywords": "⛔ No keywords",
+                                "zero_volume": "⚠️ Zero volume",
+                            }
+                            st.caption(
+                                f"{label.get(s.reason, s.reason)} — {s.collection_url}"
+                            )
 
         else:
             # --- Standard formats: show column mapping dropdowns ---
@@ -214,6 +245,7 @@ if uploaded_file is not None:
                 st.session_state.normalized_data = normalized
                 st.session_state.source_format = source_format
                 st.session_state.collection_groups = groups
+                st.session_state.skipped_collections = []
                 st.session_state.raw_data = raw_df
 
                 st.success(f"Processed {len(normalized)} keywords into {len(groups)} collections")
@@ -240,11 +272,26 @@ if st.session_state.collection_groups:
         ]
         st.dataframe(pd.DataFrame(preview_rows), use_container_width=True)
 
+    # Build set of zero-volume URLs for inline warnings
+    zero_vol_urls = {
+        s.collection_url
+        for s in st.session_state.get("skipped_collections", [])
+        if s.reason == "zero_volume"
+    }
+
     for i, group in enumerate(st.session_state.collection_groups):
+        zero_vol_flag = " ⚠️ zero volume" if group.collection_url in zero_vol_urls else ""
         with st.expander(
             f"{group.collection_name} — {group.primary_keyword} "
             f"(Vol: {group.total_volume:,} | Keywords: {len(group.secondary_keywords) + 1})"
+            f"{zero_vol_flag}"
         ):
+            if group.collection_url in zero_vol_urls:
+                st.warning(
+                    "All keywords for this collection have zero search volume. "
+                    "Included in scoring but may not be a priority."
+                )
+
             gc1, gc2 = st.columns([2, 1])
 
             with gc1:

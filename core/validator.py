@@ -7,6 +7,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from core.data_ingestion import clean_keyword
+
 
 class ValidationResult(BaseModel):
     """Result of a single validation check."""
@@ -44,14 +46,14 @@ def _count_links(text: str) -> int:
 
 
 def _check_keyword_present(text: str, keyword: str) -> bool:
-    return keyword.lower() in text.lower()
+    return clean_keyword(keyword).lower() in clean_keyword(text).lower()
 
 
 def _count_usp_matches(text: str, usps: list[str]) -> int:
-    text_lower = text.lower()
+    text_lower = clean_keyword(text).lower()
     count = 0
     for usp in usps:
-        key_words = [w for w in usp.lower().split() if len(w) > 3]
+        key_words = [w for w in clean_keyword(usp).lower().split() if len(w) > 3]
         if key_words and any(w in text_lower for w in key_words):
             count += 1
     return count
@@ -163,7 +165,7 @@ def validate_seo_title(
     ))
 
     # Primary keyword first
-    starts_with = text.lower().startswith(primary_keyword.lower())
+    starts_with = clean_keyword(text).lower().startswith(clean_keyword(primary_keyword).lower())
     results.append(ValidationResult(
         rule="keyword_first", passed=starts_with,
         message=f"Primary keyword {'leads' if starts_with else 'does not lead'} the title",

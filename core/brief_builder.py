@@ -6,6 +6,35 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from core.data_ingestion import clean_keyword
+
+
+_PLURAL_SUFFIXES = ("caps", "cap", "hats", "hat", "s")
+
+
+def _deduplicate_keywords(primary: str, secondary: list[str]) -> list[str]:
+    """Remove secondary keywords that are near-duplicates of primary or each other.
+
+    Normalises by cleaning unicode, lowercasing, and stripping common cap/hat
+    plural suffixes.  Primary is always kept.  Ordering of survivors is preserved.
+    """
+    def _norm(kw: str) -> str:
+        kw = clean_keyword(kw).lower()
+        for suffix in _PLURAL_SUFFIXES:
+            if kw.endswith(" " + suffix):
+                kw = kw[: -(len(suffix) + 1)]
+                break
+        return kw.strip()
+
+    seen: set[str] = {_norm(primary)}
+    deduped: list[str] = []
+    for kw in secondary:
+        norm = _norm(kw)
+        if norm and norm not in seen:
+            seen.add(norm)
+            deduped.append(kw)
+    return deduped
+
 
 class ContentBrief(BaseModel):
     """Content brief for a single collection."""
@@ -106,7 +135,12 @@ def build_brief(
     if paa_questions is None:
         paa_questions = []
 
-    secondary_kw_list = [kw.get("keyword", kw) if isinstance(kw, dict) else kw for kw in secondary_keywords]
+    raw_secondary = [
+        kw.get("keyword", kw) if isinstance(kw, dict) else kw
+        for kw in secondary_keywords
+    ]
+    deduped_secondary = _deduplicate_keywords(primary_keyword, raw_secondary)
+    secondary_kw_list = deduped_secondary[:10]
 
     target_word_count = calculate_target_word_count(keyword_difficulty)
 

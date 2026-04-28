@@ -15,11 +15,28 @@ from core.priority_scorer import (
     identify_sub_collection_opportunities,
 )
 
+source_format = st.session_state.get("source_format", "")
+volume_only = source_format == "keyword_map"
+
+# --- Limited data banner for keyword_map format ---
+if volume_only:
+    st.info(
+        "**Limited scoring data** — Keyword Mapping documents contain keyword "
+        "and volume data only. Four of the six scoring factors have no data signal "
+        "and will default as follows:\n\n"
+        "- **Striking Distance** → 1 (no rank data)\n"
+        "- **Homepage Nav Link** → 1 (manual input required)\n"
+        "- **Competitive Gap** → 1 (no rank or difficulty data)\n"
+        "- **Current Optimization** → 3 (assumed unoptimized)\n\n"
+        "Traffic and Revenue scores use search volume bands. "
+        "Use **Manual Score Overrides** below to adjust factors you know from other sources."
+    )
+
 # --- 2.1 Auto-Scoring ---
 st.markdown("## Collection Scoring")
 
 if not st.session_state.get("scored_collections") or st.button("Re-score Collections"):
-    scored = score_all_collections(st.session_state.collection_groups)
+    scored = score_all_collections(st.session_state.collection_groups, volume_only=volume_only)
     st.session_state.scored_collections = scored
 
 scored = st.session_state.scored_collections
@@ -38,11 +55,11 @@ for sc in scored:
         "Primary Keyword": sc.primary_keyword,
         "Total Score": sc.total_score,
         "Traffic": sc.scores.organic_traffic,
-        "Striking Dist.": sc.scores.striking_distance,
+        "Striking Dist.": str(sc.scores.striking_distance) + ("*" if not sc.has_rank_data else ""),
         "Revenue": sc.scores.revenue_potential,
-        "Nav Link": sc.scores.homepage_nav_link,
+        "Nav Link": str(sc.scores.homepage_nav_link) + "*",
         "Optimization": sc.scores.current_optimization,
-        "Competitive Gap": sc.scores.competitive_gap,
+        "Competitive Gap": str(sc.scores.competitive_gap) + ("*" if not sc.has_difficulty_data else ""),
         "Volume": f"{sc.total_volume:,}",
         "Best Rank": sc.best_rank or "-",
         "Keywords": sc.keyword_count,
@@ -60,12 +77,19 @@ st.dataframe(
     },
 )
 
+if volume_only:
+    st.caption("* Defaulted — no data available. Use Manual Score Overrides to adjust.")
+
 # Manual overrides
 st.markdown("### Manual Score Overrides")
-with st.expander("Adjust individual factor scores"):
+with st.expander("Adjust individual factor scores", expanded=volume_only):
     for i, sc in enumerate(scored):
         st.markdown(f"**{sc.collection_name}**")
         oc1, oc2, oc3, oc4, oc5, oc6 = st.columns(6)
+
+        striking_label = "Striking Dist." + (" ⚠️" if not sc.has_rank_data else "")
+        nav_label = "Nav Link ⚠️"
+        gap_label = "Comp. Gap" + (" ⚠️" if not sc.has_difficulty_data else "")
 
         with oc1:
             traffic = st.selectbox(
@@ -75,7 +99,7 @@ with st.expander("Adjust individual factor scores"):
             )
         with oc2:
             striking = st.selectbox(
-                "Striking Dist.", [1, 2, 3],
+                striking_label, [1, 2, 3],
                 index=sc.scores.striking_distance - 1,
                 key=f"sd_{i}",
             )
@@ -87,7 +111,7 @@ with st.expander("Adjust individual factor scores"):
             )
         with oc4:
             nav_link = st.selectbox(
-                "Nav Link", [1, 2, 3],
+                nav_label, [1, 2, 3],
                 index=sc.scores.homepage_nav_link - 1,
                 key=f"nl_{i}",
             )
@@ -99,7 +123,7 @@ with st.expander("Adjust individual factor scores"):
             )
         with oc6:
             competitive = st.selectbox(
-                "Competitive Gap", [1, 2, 3],
+                gap_label, [1, 2, 3],
                 index=sc.scores.competitive_gap - 1,
                 key=f"cg_{i}",
             )
@@ -150,6 +174,8 @@ if st.button("Confirm Batch", type="primary", disabled=selected_count < 1):
                 "collection_url": scored[i].collection_url,
                 "collection_name": scored[i].collection_name,
                 "primary_keyword": scored[i].primary_keyword,
+                "primary_keyword_volume": st.session_state.collection_groups[i].primary_keyword_volume
+                    if i < len(st.session_state.collection_groups) else None,
                 "total_volume": scored[i].total_volume,
                 "best_rank": scored[i].best_rank,
                 "total_clicks": scored[i].total_clicks,

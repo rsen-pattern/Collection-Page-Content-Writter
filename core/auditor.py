@@ -7,6 +7,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from core.data_ingestion import clean_keyword
+
 
 class AuditCheck(BaseModel):
     """Result of a single audit check."""
@@ -73,8 +75,8 @@ def _check_keyword_match(text: str, keyword: str) -> bool:
     """Check if keyword appears in text (case-insensitive, fuzzy)."""
     if not text or not keyword:
         return False
-    text_lower = text.lower()
-    keyword_lower = keyword.lower()
+    text_lower = clean_keyword(text).lower()
+    keyword_lower = clean_keyword(keyword).lower()
     if keyword_lower in text_lower:
         return True
     # Check individual words
@@ -89,10 +91,10 @@ def _check_usp_match(text: str, usps: list[str], min_matches: int) -> tuple[bool
     """Check how many USPs are referenced in the text."""
     if not text or not usps:
         return False, 0
-    text_lower = text.lower()
+    text_lower = clean_keyword(text).lower()
     matches = 0
     for usp in usps:
-        usp_words = usp.lower().split()
+        usp_words = clean_keyword(usp).lower().split()
         key_words = [w for w in usp_words if len(w) > 3]
         if key_words and any(w in text_lower for w in key_words):
             matches += 1

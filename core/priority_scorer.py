@@ -46,6 +46,11 @@ class ScoredCollection(BaseModel):
     keyword_count: int = 0
     secondary_keywords: list[dict] = Field(default_factory=list)
 
+    # Data availability flags — False when the factor defaulted due to missing data
+    has_rank_data: bool = True
+    has_difficulty_data: bool = True
+    has_click_data: bool = True
+
     def model_post_init(self, __context):
         self.total_score = self.scores.total
 
@@ -57,8 +62,19 @@ def load_methodology_rules() -> dict:
         return json.load(f)
 
 
-def score_organic_traffic(clicks: Optional[int], volume: int) -> int:
+def score_organic_traffic(
+    clicks: Optional[int],
+    volume: int,
+    volume_only: bool = False,
+) -> int:
     """Score based on current organic traffic (clicks or estimated from volume)."""
+    if volume_only:
+        # Direct volume bands — used when click data is not available (keyword_map)
+        if volume >= 500:
+            return 3
+        if volume >= 100:
+            return 2
+        return 1
     traffic = clicks if clicks is not None else volume * 0.03  # ~3% CTR estimate
     if traffic >= 100:
         return 3
@@ -151,6 +167,7 @@ def auto_score_collection(
     keyword_difficulty: Optional[float] = None,
     secondary_keywords: list[dict] = None,
     all_ranks: list[Optional[int]] = None,
+    volume_only: bool = False,
 ) -> ScoredCollection:
     """Auto-score a collection using available data."""
     if secondary_keywords is None:
@@ -158,8 +175,12 @@ def auto_score_collection(
     if all_ranks is None:
         all_ranks = [kw.get("current_rank") for kw in secondary_keywords]
 
+    has_rank_data = best_rank is not None or any(r is not None for r in all_ranks)
+    has_difficulty_data = keyword_difficulty is not None
+    has_click_data = total_clicks is not None
+
     scores = ScoringFactors(
-        organic_traffic=score_organic_traffic(total_clicks, total_volume),
+        organic_traffic=score_organic_traffic(total_clicks, total_volume, volume_only=volume_only),
         striking_distance=score_striking_distance(best_rank, all_ranks),
         revenue_potential=score_revenue_potential(volume=total_volume),
         homepage_nav_link=1,  # Requires manual input
@@ -177,10 +198,13 @@ def auto_score_collection(
         total_clicks=total_clicks,
         keyword_count=keyword_count,
         secondary_keywords=secondary_keywords,
+        has_rank_data=has_rank_data,
+        has_difficulty_data=has_difficulty_data,
+        has_click_data=has_click_data,
     )
 
 
-def score_all_collections(collection_groups: list) -> list[ScoredCollection]:
+def score_all_collections(collection_groups: list, volume_only: bool = False) -> list[ScoredCollection]:
     """Score all collection groups and return sorted by priority."""
     scored = []
     for group in collection_groups:
@@ -203,6 +227,7 @@ def score_all_collections(collection_groups: list) -> list[ScoredCollection]:
             keyword_difficulty=kw_difficulty,
             secondary_keywords=group.secondary_keywords,
             all_ranks=all_ranks,
+            volume_only=volume_only,
         )
         scored.append(scored_collection)
 

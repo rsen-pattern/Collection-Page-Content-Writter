@@ -3,11 +3,24 @@
 import io
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 from pydantic import BaseModel, Field
+
+
+def clean_keyword(text: str) -> str:
+    """Strip unicode format characters and normalise whitespace.
+
+    Removes zero-width spaces (U+200B), BOM (U+FEFF), soft hyphens,
+    and all other characters in unicode category 'Cf'.
+    """
+    if not text:
+        return text
+    cleaned = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+    return " ".join(cleaned.split())
 
 
 class KeywordRecord(BaseModel):
@@ -36,6 +49,13 @@ class CollectionGroup(BaseModel):
     best_rank: Optional[int] = None
     total_clicks: Optional[int] = None
     total_impressions: Optional[int] = None
+
+
+class SkippedCollection(BaseModel):
+    """A collection row excluded or flagged during ingestion."""
+
+    collection_url: str
+    reason: str  # "no_keywords" | "zero_volume"
 
 
 def load_format_mappings() -> dict:
@@ -108,7 +128,9 @@ def normalize_dataframe(df: pd.DataFrame, source_format: str) -> pd.DataFrame:
     impressions_col = _find_column(df, col_map.get("impressions", []))
 
     if keyword_col:
-        normalized["keyword"] = df[keyword_col].astype(str).str.strip()
+        normalized["keyword"] = (
+            df[keyword_col].astype(str).str.strip().apply(clean_keyword)
+        )
     if url_col:
         normalized["collection_url"] = df[url_col].astype(str).str.strip()
     if volume_col:
@@ -135,30 +157,37 @@ def normalize_dataframe(df: pd.DataFrame, source_format: str) -> pd.DataFrame:
     return normalized
 
 
-def normalize_keyword_map(df: pd.DataFrame) -> list[CollectionGroup]:
+def normalize_keyword_map(
+    df: pd.DataFrame,
+) -> tuple[list[CollectionGroup], list[SkippedCollection]]:
     """Normalize a wide-format keyword mapping XLSX into CollectionGroup objects.
 
     Each row is one collection; keywords are spread horizontally across up to
-    four keyword+volume column pairs.  Rows with all keyword columns null are
-    skipped.  Keyword 1 is primary; keywords 2-N are secondary.
+    four keyword+volume column pairs.  Keyword 1 is primary; 2-N are secondary.
+
+    Rows with all keyword columns null/empty produce a SkippedCollection with
+    reason='no_keywords'.  Rows where total_volume == 0 produce a
+    SkippedCollection with reason='zero_volume' AND still appear in groups.
     """
     mappings = load_format_mappings()
     col_map = mappings["formats"]["keyword_map"]["column_mapping"]
 
     url_col = _find_column(df, col_map["url"])
 
-    # Resolve up to 4 keyword/volume pairs dynamically
-    kw_pairs: list[tuple[str, Optional[str]]] = []
+    # The canonical keyword/volume column pairs in order
+    present_pairs: list[tuple[str, Optional[str]]] = []
     for i in range(1, 5):
         kw_col = _find_column(df, col_map[f"keyword_{i}"])
         vol_col = _find_column(df, col_map[f"volume_{i}"])
         if kw_col is not None:
-            kw_pairs.append((kw_col, vol_col))
+            present_pairs.append((kw_col, vol_col))
 
-    if not url_col or not kw_pairs:
-        return []
+    if not url_col or not present_pairs:
+        return [], []
 
     groups: list[CollectionGroup] = []
+    skipped: list[SkippedCollection] = []
+
     for _, row in df.iterrows():
         url_val = row.get(url_col)
         if pd.isna(url_val):
@@ -167,51 +196,57 @@ def normalize_keyword_map(df: pd.DataFrame) -> list[CollectionGroup]:
         if "/collections/" not in url.lower():
             continue
 
-        # Skip rows where every keyword cell is null/empty
-        if all(
+        # Detect whether all keyword columns are null/empty
+        all_null = all(
             pd.isna(row.get(kw_col)) or str(row.get(kw_col, "")).strip() == ""
-            for kw_col, _ in kw_pairs
-        ):
+            for kw_col, _ in present_pairs
+        )
+        if all_null:
+            skipped.append(SkippedCollection(collection_url=url, reason="no_keywords"))
             continue
 
-        # Collect non-empty keywords with their volumes
+        # Collect non-empty keywords with cleaned text and integer volumes
         keywords: list[dict] = []
-        for kw_col, vol_col in kw_pairs:
+        for kw_col, vol_col in present_pairs:
             raw_kw = row.get(kw_col)
             if pd.isna(raw_kw) or str(raw_kw).strip() == "":
                 continue
-            kw_text = str(raw_kw).strip()
-            vol: Optional[int] = None
+            kw_text = clean_keyword(str(raw_kw).strip())
+            if not kw_text:
+                continue
+            vol = 0
             if vol_col is not None:
                 raw_vol = row.get(vol_col)
                 if pd.notna(raw_vol):
                     try:
                         vol = int(float(str(raw_vol)))
                     except (ValueError, TypeError):
-                        pass
+                        vol = 0
             keywords.append({"keyword": kw_text, "search_volume": vol})
 
         if not keywords:
+            skipped.append(SkippedCollection(collection_url=url, reason="no_keywords"))
             continue
 
+        total_volume = sum(kw["search_volume"] for kw in keywords)
+
+        if total_volume == 0:
+            skipped.append(SkippedCollection(collection_url=url, reason="zero_volume"))
+
         primary = keywords[0]
-        secondary = []
+        secondary: list[dict] = []
         for kw in keywords[1:]:
             kw_data: dict = {"keyword": kw["keyword"]}
-            if kw["search_volume"] is not None:
+            if kw["search_volume"] != 0:
                 kw_data["search_volume"] = kw["search_volume"]
             secondary.append(kw_data)
-
-        total_volume = sum(
-            kw["search_volume"] for kw in keywords if kw["search_volume"] is not None
-        )
 
         groups.append(
             CollectionGroup(
                 collection_url=url,
                 collection_name=_extract_collection_name(url),
                 primary_keyword=primary["keyword"],
-                primary_keyword_volume=primary["search_volume"],
+                primary_keyword_volume=primary["search_volume"] or None,
                 secondary_keywords=secondary,
                 total_volume=total_volume,
                 best_rank=None,
@@ -221,7 +256,7 @@ def normalize_keyword_map(df: pd.DataFrame) -> list[CollectionGroup]:
         )
 
     groups.sort(key=lambda g: g.total_volume, reverse=True)
-    return groups
+    return groups, skipped
 
 
 def group_by_collection(df: pd.DataFrame) -> list[CollectionGroup]:
@@ -306,13 +341,15 @@ def read_upload(uploaded_file) -> pd.DataFrame:
         raise ValueError(f"Unsupported file format: {filename}. Use CSV or XLSX.")
 
 
-def ingest_file(uploaded_file) -> tuple[pd.DataFrame, str, list[CollectionGroup]]:
+def ingest_file(
+    uploaded_file,
+) -> tuple[pd.DataFrame, str, list[CollectionGroup], list[SkippedCollection]]:
     """Full ingestion pipeline: read, detect format, normalize, group."""
     raw_df = read_upload(uploaded_file)
     source_format = detect_format(raw_df)
     if source_format == "keyword_map":
-        groups = normalize_keyword_map(raw_df)
-        return pd.DataFrame(), source_format, groups
+        groups, skipped = normalize_keyword_map(raw_df)
+        return pd.DataFrame(), source_format, groups, skipped
     normalized_df = normalize_dataframe(raw_df, source_format)
     groups = group_by_collection(normalized_df)
-    return normalized_df, source_format, groups
+    return normalized_df, source_format, groups, []
