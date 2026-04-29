@@ -128,21 +128,33 @@ def _scraper_keys() -> dict:
     }
 
 
-# ── Scrape All button ─────────────────────────────────────────────────────────
-scrape_col1, scrape_col2 = st.columns([2, 5])
-with scrape_col1:
+# ── Action bar — Scrape All + Run All Audits ──────────────────────────────────
+action_col1, action_col2, action_col3 = st.columns([2, 2, 3])
+
+with action_col1:
     scrape_all_clicked = st.button(
         "🔍 Scrape All Pages",
         type="primary",
         help="Fetch live page data for all collections in this batch automatically.",
     )
-with scrape_col2:
-    est_time = max(1, round(len(batch) * 2 / 60, 1))
-    st.caption(
-        f"Fetches title, H1, meta description, and collection description from each live URL. "
-        f"~{len(batch)} requests at ~2s each — takes roughly {est_time} mins for this batch."
+
+with action_col2:
+    run_all_audits_clicked = st.button(
+        "✅ Run All Audits",
+        type="secondary",
+        help=(
+            "Run the audit checklist on all collections using current field values. "
+            "Scrape first (or enter fields manually) before running audits."
+        ),
     )
 
+with action_col3:
+    est_time = max(1, round(len(batch) * 2 / 60, 1))
+    st.caption(
+        f"~{len(batch)} collections · Scrape ~{est_time} mins · Audit instant"
+    )
+
+# ── Scrape All handler ────────────────────────────────────────────────────────
 if scrape_all_clicked:
     progress = st.progress(0, text="Starting scrape...")
     scrape_results = {}
@@ -161,15 +173,95 @@ if scrape_all_clicked:
     st.session_state.scrape_results = scrape_results
     st.session_state.scrape_tiers = scrape_tiers
 
+    # Write scraped values directly into widget session state keys so that
+    # Streamlit renders them on the next rerun. Without this, Streamlit ignores
+    # the value= argument for widgets whose key already exists in session state.
+    for idx, col in enumerate(batch):
+        url = col["collection_url"]
+        result = scrape_results.get(url)
+        if result and result.success:
+            if result.seo_title:
+                st.session_state[f"audit_seo_title_{idx}"] = result.seo_title
+            if result.h1:
+                st.session_state[f"audit_h1_{idx}"] = result.h1
+            if result.meta_description:
+                st.session_state[f"audit_meta_{idx}"] = result.meta_description
+            if result.description:
+                st.session_state[f"audit_desc_{idx}"] = result.description
+
     success_count = sum(1 for r in scrape_results.values() if r.success)
     fail_count = len(scrape_results) - success_count
     if fail_count == 0:
-        st.success(f"Scraped {success_count} pages successfully.")
+        st.success(f"Scraped {success_count} pages successfully. Fields populated below.")
     else:
         st.warning(
             f"Scraped {success_count} pages successfully. "
-            f"{fail_count} failed — see individual collections below for details."
+            f"{fail_count} failed — check individual collections below."
         )
+    st.rerun()
+
+# ── Run All Audits handler ────────────────────────────────────────────────────
+if run_all_audits_clicked:
+    audit_progress = st.progress(0, text="Running audits...")
+    audits_run = 0
+
+    for idx, col in enumerate(batch):
+        url = col["collection_url"]
+        audit_progress.progress(
+            idx / len(batch),
+            text=f"Auditing {idx + 1}/{len(batch)}: {col['collection_name']}...",
+        )
+
+        # Read field values from widget session state keys (populated by
+        # Scrape All or by the user typing directly into the fields).
+        seo_title = st.session_state.get(f"audit_seo_title_{idx}", "")
+        h1 = st.session_state.get(f"audit_h1_{idx}", "")
+        description = st.session_state.get(f"audit_desc_{idx}", "")
+        meta_desc = st.session_state.get(f"audit_meta_{idx}", "")
+
+        # Fall back to previously saved audit input if widget keys are empty.
+        saved_input = st.session_state.audit_results.get(url, {}).get("input", {})
+        seo_title = seo_title or saved_input.get("seo_title", "")
+        h1 = h1 or saved_input.get("h1", "")
+        description = description or saved_input.get("description", "")
+        meta_desc = meta_desc or saved_input.get("meta_description", "")
+
+        if not any([seo_title, h1, description, meta_desc]):
+            continue
+
+        audit_data = CollectionAuditData(
+            collection_url=url,
+            collection_name=col["collection_name"],
+            primary_keyword=col["primary_keyword"],
+            seo_title=seo_title,
+            h1=h1,
+            description=description,
+            meta_description=meta_desc,
+            brand_usps=st.session_state.client_profile.get("brand_usps", []),
+            url_handle=url.rstrip("/").split("/")[-1] if "/collections/" in url else "",
+        )
+
+        result = audit_collection(audit_data)
+        st.session_state.audit_results[url] = {
+            "result": result,
+            "input": {
+                "seo_title": seo_title,
+                "h1": h1,
+                "description": description,
+                "meta_description": meta_desc,
+            },
+        }
+        audits_run += 1
+
+    audit_progress.progress(1.0, text="Audits complete.")
+
+    if audits_run == 0:
+        st.warning(
+            "No fields found to audit. "
+            "Run Scrape All first, or enter fields manually in each collection."
+        )
+    else:
+        st.success(f"Audit complete — {audits_run} collections audited.")
     st.rerun()
 
 # ── Per-collection data input ─────────────────────────────────────────────────
@@ -214,6 +306,18 @@ for i, col in enumerate(batch):
                 results[url] = fallback.data
                 st.session_state.scrape_results = results
                 st.session_state.setdefault("scrape_tiers", {})[url] = fallback.tier_used
+
+                # Write to widget keys so fields visibly populate on rerun.
+                result = fallback.data
+                if result.success:
+                    if result.seo_title:
+                        st.session_state[f"audit_seo_title_{i}"] = result.seo_title
+                    if result.h1:
+                        st.session_state[f"audit_h1_{i}"] = result.h1
+                    if result.meta_description:
+                        st.session_state[f"audit_meta_{i}"] = result.meta_description
+                    if result.description:
+                        st.session_state[f"audit_desc_{i}"] = result.description
             st.rerun()
 
         # ── Pre-flight flags from SF data ─────────────────────────────────────
@@ -355,12 +459,37 @@ st.markdown("---")
 st.markdown("## Audit Summary")
 
 if st.session_state.audit_results:
+    total_audited = len(st.session_state.audit_results)
+    total_passing = sum(
+        data["result"].passing
+        for data in st.session_state.audit_results.values()
+        if "result" in data
+    )
+    total_failing = sum(
+        data["result"].failing
+        for data in st.session_state.audit_results.values()
+        if "result" in data
+    )
+    not_audited = len(batch) - total_audited
+
+    sm1, sm2, sm3, sm4 = st.columns(4)
+    sm1.metric("Collections Audited", total_audited)
+    sm2.metric("Total Passing Checks", total_passing)
+    sm3.metric("Total Failing Checks", total_failing)
+    sm4.metric("Not Yet Audited", not_audited)
+
+    st.markdown("---")
+
     for url, data in st.session_state.audit_results.items():
+        if "result" not in data:
+            continue
         result = data["result"]
-        col_name = result.collection_name
+        score_pct = int((result.passing / result.total_checks) * 100) if result.total_checks else 0
+        icon = "🟢" if score_pct >= 70 else ("🟡" if score_pct >= 40 else "🔴")
         st.markdown(
-            f"**{col_name}**: {result.score_display} "
+            f"{icon} **{result.collection_name}**: "
+            f"{result.score_display} "
             f"({result.passing} pass, {result.failing} fail, {result.needs_review} review)"
         )
 else:
-    st.info("No audits completed yet. Scrape pages or enter data above and click 'Run Audit'.")
+    st.info("No audits run yet. Use Scrape All then Run All Audits, or run individual audits above.")
