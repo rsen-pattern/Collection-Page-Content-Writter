@@ -97,11 +97,11 @@
         },
         {
           "id": "description_word_count",
-          "label": "Word count in 50-125 range",
+          "label": "Word count in 250-350 range",
           "type": "word_count_range",
           "field": "description",
-          "min_words": 50,
-          "max_words": 125,
+          "min_words": 250,
+          "max_words": 350,
           "impact": "medium",
           "effort": "medium"
         },

@@ -81,7 +81,7 @@ def calculate_target_word_count(
     elif keyword_difficulty >= 30:
         return (min_words + max_words) // 2
     else:
-        return min_words + 25  # ~75 words for low difficulty
+        return min_words + 25  # ~275 words for low difficulty
 
 
 def find_related_collections(

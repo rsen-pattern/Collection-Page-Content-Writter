@@ -1,11 +1,11 @@
 {
   "content_length": {
     "description": {
-      "sweet_spot_min": 50,
-      "sweet_spot_max": 125,
-      "minimum_viable": 30,
-      "upper_limit_warn": 200,
-      "hard_ceiling": 400
+      "sweet_spot_min": 250,
+      "sweet_spot_max": 350,
+      "minimum_viable": 150,
+      "upper_limit_warn": 400,
+      "hard_ceiling": 500
     },
     "seo_title": {
       "min_chars": 50,
