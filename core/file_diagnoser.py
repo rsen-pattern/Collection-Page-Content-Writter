@@ -16,6 +16,7 @@ sheet beyond the first ~20 rows of headers/values that get sent in the prompt.
 from __future__ import annotations
 
 import json
+import re
 from typing import Optional
 
 import pandas as pd
@@ -25,7 +26,9 @@ from openai import OpenAI
 # Internal fields the app understands. Any subset can appear in a mapping.
 _INTERNAL_FIELDS = [
     "keyword",          # Primary keyword (or single keyword column)
-    "url",              # Collection URL / page
+    "url",              # Collection URL / page (real URL preferred)
+    "name",             # Descriptive name when no URL exists (e.g. "Oversized Shirts")
+                        # Used to generate placeholder collection slugs.
     "volume",           # Search volume for the primary keyword
     "difficulty",       # Keyword difficulty
     "rank",             # Current rank / position
@@ -41,19 +44,23 @@ _INTERNAL_FIELDS = [
 
 _DIAGNOSIS_PROMPT = """You are a data analyst inspecting a spreadsheet that a user uploaded to an SEO tool. The tool needs to find:
 - a keyword column (or multiple keyword columns in a wide-format sheet)
-- a URL/page column
+- an identifier for each row: ideally a URL, otherwise a descriptive name
 - search volume, keyword difficulty, current rank, clicks, impressions (any that exist)
 
 The sheet may have empty rows or a title banner before the actual header row. Your job is to identify the correct header row and map its columns to the internal fields below.
 
 INTERNAL FIELDS (use these exact names in your mapping):
 - "keyword" — single keyword column (long format)
-- "url" — collection URL or page
+- "url" — collection URL or page (real URL like /collections/foo or https://...)
+- "name" — descriptive row identifier when there is NO URL column, or when the URL column is empty (e.g. "Sub Category" with values like "Oversized Shirts", or category/page name)
 - "volume", "difficulty", "rank", "clicks", "impressions" — metrics
 - For WIDE format (one row per URL with multiple keyword columns):
   "keyword_1", "volume_1", "keyword_2", "volume_2", "keyword_3", "volume_3", "keyword_4", "volume_4"
 
-Use wide-format (keyword_1..keyword_4) ONLY when the sheet clearly has multiple keyword columns side-by-side (e.g. "Primary Keyword", "Secondary Keyword", "Tertiary Keyword"). Otherwise use the long-format fields.
+IMPORTANT:
+- Use wide-format (keyword_1..keyword_4) ONLY when the sheet clearly has multiple keyword columns side-by-side (e.g. "Primary Keyword", "Secondary Keyword", "Tertiary Keyword"). Otherwise use the long-format fields.
+- If the sheet has a column labelled "URL" but the values look empty/blank in the preview, ALSO map a descriptive column like "Sub Category" or page name as "name" so the tool can generate placeholder URLs. You can map both "url" and "name".
+- If there is NO URL column at all, map the most descriptive identifier column as "name".
 
 SHEET PREVIEW (first 15 rows, 0-indexed):
 {preview}
@@ -247,16 +254,28 @@ def apply_long_mapping(df: pd.DataFrame, mapping: dict) -> pd.DataFrame:
     return out
 
 
-def apply_wide_mapping(df: pd.DataFrame, mapping: dict) -> tuple[list, list]:
-    """Apply a wide-format mapping and return (CollectionGroup list, skipped list).
+def apply_wide_mapping(df: pd.DataFrame, mapping: dict) -> tuple[list, list, dict]:
+    """Apply a wide-format mapping and return (CollectionGroup list, skipped list, info).
 
     Reuses the same shape that `normalize_keyword_map` produces so callers can
     drop the result straight into `st.session_state.collection_groups`.
+
+    URL handling — three cases in order of preference:
+      1. Real URL value in the mapped url column → use as-is.
+      2. URL column empty/blank but a `name` column is mapped → generate a
+         placeholder slug like `/collections/oversized-shirts` from the name.
+      3. No URL and no name → fall back to using primary keyword as the slug.
+
+    The third element of the tuple is an info dict with keys:
+      - placeholder_urls (int): how many rows used a generated placeholder
+      - real_urls (int): how many rows had a real URL value
+    Callers can surface this so the user knows whether to fill in real URLs.
     """
     from core.data_ingestion import CollectionGroup, SkippedCollection, _extract_collection_name, clean_keyword
 
     inv = {v: k for k, v in mapping.items()}  # internal -> source col
     url_col = inv.get("url")
+    name_col = inv.get("name")
     pairs = []
     for i in range(1, 5):
         kw = inv.get(f"keyword_{i}")
@@ -264,19 +283,33 @@ def apply_wide_mapping(df: pd.DataFrame, mapping: dict) -> tuple[list, list]:
         if kw and kw in df.columns:
             pairs.append((kw, vol if vol in df.columns else None))
 
-    if not url_col or not pairs:
-        return [], []
+    if not pairs:
+        return [], [], {"placeholder_urls": 0, "real_urls": 0}
 
     groups: list = []
     skipped: list = []
-    for _, row in df.iterrows():
-        url_val = row.get(url_col)
-        if pd.isna(url_val):
-            continue
-        url = str(url_val).strip()
-        if not url or url.lower() == "nan":
-            continue
+    placeholder_count = 0
+    real_url_count = 0
 
+    for _, row in df.iterrows():
+        # Resolve identifier: prefer real URL, fall back to name, then primary keyword
+        url = ""
+        used_placeholder = False
+
+        if url_col and url_col in df.columns:
+            url_val = row.get(url_col)
+            if pd.notna(url_val) and str(url_val).strip() and str(url_val).strip().lower() != "nan":
+                url = str(url_val).strip()
+
+        if not url and name_col and name_col in df.columns:
+            name_val = row.get(name_col)
+            if pd.notna(name_val) and str(name_val).strip():
+                slug = _slugify(str(name_val))
+                if slug:
+                    url = f"/collections/{slug}"
+                    used_placeholder = True
+
+        # Collect keywords first so we can use the primary keyword as a last-resort slug
         keywords = []
         for kw_col, vol_col in pairs:
             raw = row.get(kw_col)
@@ -295,9 +328,25 @@ def apply_wide_mapping(df: pd.DataFrame, mapping: dict) -> tuple[list, list]:
                         volume = 0
             keywords.append({"keyword": text, "search_volume": volume})
 
+        # Last-resort: use primary keyword as slug if still no URL
+        if not url and keywords:
+            slug = _slugify(keywords[0]["keyword"])
+            if slug:
+                url = f"/collections/{slug}"
+                used_placeholder = True
+
+        if not url:
+            # Truly nothing to identify this row by
+            continue
+
         if not keywords:
             skipped.append(SkippedCollection(collection_url=url, reason="no_keywords"))
             continue
+
+        if used_placeholder:
+            placeholder_count += 1
+        else:
+            real_url_count += 1
 
         total = sum(k["search_volume"] for k in keywords)
         if total == 0:
@@ -311,9 +360,23 @@ def apply_wide_mapping(df: pd.DataFrame, mapping: dict) -> tuple[list, list]:
                 entry["search_volume"] = kw["search_volume"]
             secondary.append(entry)
 
+        # Use the name column for collection_name when available — friendlier
+        # than the slugified keyword. Fall back to extracting from URL.
+        collection_name = ""
+        if name_col and name_col in df.columns:
+            name_val = row.get(name_col)
+            if pd.notna(name_val) and str(name_val).strip():
+                collection_name = str(name_val).strip()
+        if not collection_name:
+            collection_name = (
+                _extract_collection_name(url)
+                if "/collections/" in url.lower()
+                else url
+            )
+
         groups.append(CollectionGroup(
             collection_url=url,
-            collection_name=_extract_collection_name(url) if "/collections/" in url.lower() else url,
+            collection_name=collection_name,
             primary_keyword=primary["keyword"],
             primary_keyword_volume=primary["search_volume"] or None,
             secondary_keywords=secondary,
@@ -324,7 +387,15 @@ def apply_wide_mapping(df: pd.DataFrame, mapping: dict) -> tuple[list, list]:
         ))
 
     groups.sort(key=lambda g: g.total_volume, reverse=True)
-    return groups, skipped
+    info = {"placeholder_urls": placeholder_count, "real_urls": real_url_count}
+    return groups, skipped, info
+
+
+def _slugify(text: str) -> str:
+    """Convert a name like 'Oversized Shirts' to 'oversized-shirts'."""
+    cleaned = re.sub(r"[^\w\s-]", "", str(text).lower())
+    cleaned = re.sub(r"[\s_]+", "-", cleaned).strip("-")
+    return cleaned
 
 
 def _alias_for(internal: str) -> str:
