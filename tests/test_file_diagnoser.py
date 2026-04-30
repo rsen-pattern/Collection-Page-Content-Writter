@@ -101,6 +101,20 @@ class TestDiagnoseFile:
             result = diagnose_file("key", df)
             assert result["mapping"] == {"Foo": "keyword"}
 
+    def test_name_field_accepted_in_mapping(self):
+        with patch("core.file_diagnoser.OpenAI") as mock_openai:
+            instance = mock_openai.return_value
+            instance.chat.completions.create.return_value = MagicMock(
+                choices=[MagicMock(message=MagicMock(content=(
+                    '{"header_row": 0, "format": "wide", '
+                    '"mapping": {"Sub Category": "name", "Primary KW": "keyword_1"}, '
+                    '"confidence": "high", "reasoning": "x"}'
+                )))]
+            )
+            df = pd.DataFrame({"Sub Category": ["Shirts"], "Primary KW": ["shirt"]})
+            result = diagnose_file("key", df)
+            assert result["mapping"]["Sub Category"] == "name"
+
     def test_invalid_json_returns_error(self):
         with patch("core.file_diagnoser.OpenAI") as mock_openai:
             instance = mock_openai.return_value
@@ -162,49 +176,104 @@ class TestApplyLongMapping:
 class TestApplyWideMapping:
     def test_builds_collection_groups_from_wide_format(self):
         df = pd.DataFrame({
-            "Sub Category": ["Oversized Shirts", "Flannel Shirts"],
+            "URL": ["https://x.com/collections/oversized", "https://x.com/collections/flannel"],
             "Primary Keyword": ["oversized shirt", "flannel shirt"],
             "Primary KW SV": [2400, 5400],
             "Secondary Keyword": ["oversized shirts", "flannel shirts"],
             "Secondary KW SV": [1000, 1600],
         })
         mapping = {
-            "Sub Category": "url",
+            "URL": "url",
             "Primary Keyword": "keyword_1",
             "Primary KW SV": "volume_1",
             "Secondary Keyword": "keyword_2",
             "Secondary KW SV": "volume_2",
         }
-        groups, skipped = apply_wide_mapping(df, mapping)
+        groups, skipped, info = apply_wide_mapping(df, mapping)
         assert len(groups) == 2
         assert groups[0].primary_keyword == "flannel shirt"  # sorted by total vol desc
         assert groups[0].total_volume == 7000  # 5400 + 1600
         assert len(skipped) == 0
+        assert info["real_urls"] == 2
+        assert info["placeholder_urls"] == 0
 
     def test_skips_rows_with_no_keywords(self):
         df = pd.DataFrame({
-            "URL": ["a", "b"],
+            "URL": ["https://x.com/collections/a", "https://x.com/collections/b"],
             "kw1": ["dog", None],
             "vol1": [100, 0],
         })
         mapping = {"URL": "url", "kw1": "keyword_1", "vol1": "volume_1"}
-        groups, skipped = apply_wide_mapping(df, mapping)
+        groups, skipped, info = apply_wide_mapping(df, mapping)
         assert len(groups) == 1
         assert len(skipped) == 1
         assert skipped[0].reason == "no_keywords"
 
     def test_flags_zero_volume_rows(self):
-        df = pd.DataFrame({"URL": ["a"], "kw1": ["dog"], "vol1": [0]})
+        df = pd.DataFrame({"URL": ["https://x.com/collections/a"], "kw1": ["dog"], "vol1": [0]})
         mapping = {"URL": "url", "kw1": "keyword_1", "vol1": "volume_1"}
-        groups, skipped = apply_wide_mapping(df, mapping)
+        groups, skipped, info = apply_wide_mapping(df, mapping)
         assert len(groups) == 1
         assert len(skipped) == 1
         assert skipped[0].reason == "zero_volume"
 
-    def test_returns_empty_when_url_missing(self):
-        df = pd.DataFrame({"kw1": ["dog"], "vol1": [100]})
-        mapping = {"kw1": "keyword_1", "vol1": "volume_1"}  # no url mapping
-        groups, skipped = apply_wide_mapping(df, mapping)
+    def test_empty_url_falls_back_to_name_column(self):
+        df = pd.DataFrame({
+            "URL": [None, None],
+            "Sub Category": ["Oversized Shirts", "Flannel Shirts"],
+            "Primary Keyword": ["oversized shirt", "flannel shirt"],
+            "Primary KW SV": [100, 200],
+        })
+        mapping = {
+            "URL": "url",
+            "Sub Category": "name",
+            "Primary Keyword": "keyword_1",
+            "Primary KW SV": "volume_1",
+        }
+        groups, skipped, info = apply_wide_mapping(df, mapping)
+        assert len(groups) == 2
+        assert info["placeholder_urls"] == 2
+        assert info["real_urls"] == 0
+        urls = [g.collection_url for g in groups]
+        assert "/collections/flannel-shirts" in urls
+        assert "/collections/oversized-shirts" in urls
+        # Friendly collection names should come from the name column
+        names = [g.collection_name for g in groups]
+        assert "Flannel Shirts" in names
+
+    def test_no_url_no_name_falls_back_to_keyword(self):
+        df = pd.DataFrame({
+            "Primary Keyword": ["oversized shirt"],
+            "Primary KW SV": [100],
+        })
+        mapping = {"Primary Keyword": "keyword_1", "Primary KW SV": "volume_1"}
+        groups, skipped, info = apply_wide_mapping(df, mapping)
+        assert len(groups) == 1
+        assert info["placeholder_urls"] == 1
+        assert groups[0].collection_url == "/collections/oversized-shirt"
+
+    def test_mixed_real_and_placeholder_urls(self):
+        df = pd.DataFrame({
+            "URL": ["https://x.com/collections/real", None],
+            "Sub Category": ["Real Cat", "Placeholder Cat"],
+            "Primary Keyword": ["real kw", "placeholder kw"],
+            "Primary KW SV": [100, 200],
+        })
+        mapping = {
+            "URL": "url",
+            "Sub Category": "name",
+            "Primary Keyword": "keyword_1",
+            "Primary KW SV": "volume_1",
+        }
+        groups, skipped, info = apply_wide_mapping(df, mapping)
+        assert len(groups) == 2
+        assert info["real_urls"] == 1
+        assert info["placeholder_urls"] == 1
+
+    def test_returns_empty_when_no_keywords_mapped(self):
+        df = pd.DataFrame({"URL": ["x"]})
+        mapping = {"URL": "url"}  # no keyword mapping
+        groups, skipped, info = apply_wide_mapping(df, mapping)
         assert groups == []
 
 

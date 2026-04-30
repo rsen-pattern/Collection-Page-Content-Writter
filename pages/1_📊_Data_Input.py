@@ -180,7 +180,7 @@ if uploaded_file is not None:
 
                         if df is not None:
                             if diagnosis.get("format") == "wide":
-                                groups, skipped = apply_wide_mapping(df, diagnosis["mapping"])
+                                groups, skipped, info = apply_wide_mapping(df, diagnosis["mapping"])
                                 if groups:
                                     st.session_state.normalized_data = pd.DataFrame()
                                     st.session_state.source_format = "keyword_map"  # treat as wide
@@ -191,12 +191,20 @@ if uploaded_file is not None:
                                         f"Applied AI mapping. Loaded **{len(groups)} collections** "
                                         f"({len(skipped)} skipped)."
                                     )
+                                    if info["placeholder_urls"]:
+                                        st.warning(
+                                            f"⚠️ {info['placeholder_urls']} of {len(groups)} collections "
+                                            f"are using **placeholder URLs** generated from category/keyword names "
+                                            f"(your file's URL column is empty). The pipeline will work for "
+                                            f"keyword scoring and content drafting, but the Shopify scraper "
+                                            f"won't find products until you fill in real URLs."
+                                        )
                                     st.session_state.pop("_ai_diagnosis", None)
                                     st.rerun()
                                 else:
                                     st.error(
                                         "AI mapping produced no usable rows. "
-                                        "The URL column may be wrong — try editing the mapping or "
+                                        "The URL/name columns may be wrong — try editing the mapping or "
                                         "manually entering URLs in the next step."
                                     )
                             else:
