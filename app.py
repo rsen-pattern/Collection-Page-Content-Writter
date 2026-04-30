@@ -52,6 +52,8 @@ def init_session_state():
             "brand_usps": [],
             "voice_notes": "",
             "target_market": "UK",
+            "faq_count": 4,
+            "past_feedback": "",
         },
         # Data
         "raw_data": None,
@@ -184,6 +186,9 @@ pg = st.navigation(
     {
         "": [
             st.Page(home_page, title="Home", icon="🏠"),
+        ],
+        "Setup": [
+            st.Page(str(pages_dir / "0_🏷️_Brand_Profile.py"), title="Brand Profile", icon="🏷️"),
         ],
         "Single Page": [
             st.Page(str(pages_dir / "6_✏️_Single_URL_Writer.py"), title="Single URL Writer", icon="✏️"),

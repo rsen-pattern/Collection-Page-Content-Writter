@@ -11,64 +11,15 @@ if "client_profile" not in st.session_state:
     st.warning("Please start from the main page to initialize the app.")
     st.stop()
 
-# --- 1.1 Client Profile ---
-st.markdown("## Client Profile")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    brand_name = st.text_input(
-        "Client / Store Name *",
-        value=st.session_state.client_profile.get("brand_name", ""),
-    )
-    store_url = st.text_input(
-        "Store URL *",
-        value=st.session_state.client_profile.get("store_url", ""),
-        placeholder="https://example.com",
-    )
-    target_market = st.selectbox(
-        "Target Market *",
-        ["UK", "US", "AU", "CA", "EU", "Global"],
-        index=["UK", "US", "AU", "CA", "EU", "Global"].index(
-            st.session_state.client_profile.get("target_market", "UK")
-        ),
-    )
-
-with col2:
-    usps_text = st.text_area(
-        "Brand USPs (one per line, 3-5 required) *",
-        value="\n".join(st.session_state.client_profile.get("brand_usps", [])),
-        height=120,
-        help="What makes this brand unique? These get woven into every piece of generated content.",
-    )
-    voice_notes = st.text_area(
-        "Brand Voice Notes",
-        value=st.session_state.client_profile.get("voice_notes", ""),
-        height=80,
-        placeholder="e.g., Warm and approachable, avoids jargon, speaks to style-conscious women 25-45",
-    )
-
-# Save profile
-brand_usps = [u.strip() for u in usps_text.strip().split("\n") if u.strip()]
-st.session_state.client_profile = {
-    "brand_name": brand_name,
-    "store_url": store_url,
-    "brand_usps": brand_usps,
-    "voice_notes": voice_notes,
-    "target_market": target_market,
-}
-
-# Validation
-profile_valid = bool(brand_name and store_url and len(brand_usps) >= 3)
-if not profile_valid:
-    missing = []
-    if not brand_name:
-        missing.append("Client Name")
-    if not store_url:
-        missing.append("Store URL")
-    if len(brand_usps) < 3:
-        missing.append(f"Brand USPs ({len(brand_usps)}/3 minimum)")
-    st.warning(f"Complete the profile to continue: {', '.join(missing)}")
+# --- 1.1 Brand Profile status banner ---
+cp = st.session_state.get("client_profile", {})
+if not cp.get("brand_name"):
+    st.warning("⚠️ No brand profile loaded.")
+    st.page_link("pages/0_🏷️_Brand_Profile.py", label="→ Set up brand profile", icon="🏷️")
+    st.stop()
+else:
+    st.success(f"Active brand: **{cp['brand_name']}** · {len(cp.get('brand_usps', []))} USPs")
+    st.page_link("pages/0_🏷️_Brand_Profile.py", label="Edit brand profile", icon="🏷️")
 
 st.markdown("---")
 
