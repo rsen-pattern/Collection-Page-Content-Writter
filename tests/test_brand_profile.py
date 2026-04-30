@@ -85,6 +85,60 @@ class TestBrandProfileRoundtrip:
         assert "Beta" in names
 
 
+class TestPastFeedback:
+    def test_save_then_load_preserves_past_feedback(self):
+        save_profile(BrandProfile(
+            brand_name="Stanley",
+            past_feedback="Client rejected 'perfect for' twice. Stop using it."
+        ))
+        loaded = load_profile("Stanley")
+        assert "perfect for" in loaded.past_feedback
+
+    def test_past_feedback_appears_in_brand_context(self):
+        from core.brand_profile import build_brand_custom_context
+        ctx = build_brand_custom_context({
+            "past_feedback": "Don't use 'discover our range' — rejected.",
+            "prompt_overrides": {},
+        })
+        assert "PAST FEEDBACK" in ctx
+        assert "discover our range" in ctx
+
+    def test_empty_past_feedback_no_section(self):
+        from core.brand_profile import build_brand_custom_context
+        ctx = build_brand_custom_context({"past_feedback": "", "prompt_overrides": {}})
+        assert "PAST FEEDBACK" not in ctx
+
+    def test_banned_phrases_appear_in_context(self):
+        from core.brand_profile import build_brand_custom_context
+        ctx = build_brand_custom_context({
+            "past_feedback": "",
+            "prompt_overrides": {"banned_phrases": ["perfect for", "discover our range"]},
+        })
+        assert "BRAND-BANNED PHRASES" in ctx
+        assert "perfect for" in ctx
+
+    def test_empty_banned_phrases_no_section(self):
+        from core.brand_profile import build_brand_custom_context
+        ctx = build_brand_custom_context({"past_feedback": "", "prompt_overrides": {"banned_phrases": []}})
+        assert "BRAND-BANNED PHRASES" not in ctx
+
+    def test_from_dict_defaults_missing_past_feedback(self):
+        data = {"brand_name": "Y", "brand_usps": []}
+        p = BrandProfile.from_dict(data)
+        assert p.past_feedback == ""
+
+    def test_banned_phrases_round_trip(self):
+        profile = BrandProfile(
+            brand_name="X",
+            prompt_overrides=BrandPromptOverrides(
+                banned_phrases=["perfect for", "discover our range"],
+            ),
+        )
+        save_profile(profile)
+        loaded = load_profile("X")
+        assert loaded.prompt_overrides.banned_phrases == ["perfect for", "discover our range"]
+
+
 class TestBuildCustomRulesBlock:
     def test_alt_text_uses_alt_fields(self):
         overrides = BrandPromptOverrides(

@@ -21,6 +21,7 @@ class BrandPromptOverrides:
     voice_examples: str = ""
     alt_text_rules: str = ""
     alt_text_examples: str = ""
+    banned_phrases: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -28,6 +29,7 @@ class BrandPromptOverrides:
             "voice_examples": self.voice_examples,
             "alt_text_rules": self.alt_text_rules,
             "alt_text_examples": self.alt_text_examples,
+            "banned_phrases": self.banned_phrases,
         }
 
     @classmethod
@@ -37,6 +39,7 @@ class BrandPromptOverrides:
             voice_examples=data.get("voice_examples", ""),
             alt_text_rules=data.get("alt_text_rules", ""),
             alt_text_examples=data.get("alt_text_examples", ""),
+            banned_phrases=data.get("banned_phrases", []),
         )
 
 
@@ -50,6 +53,7 @@ class BrandProfile:
     voice_notes: str = ""
     target_market: str = "UK"
     faq_count: int = 4
+    past_feedback: str = ""
     prompt_overrides: BrandPromptOverrides = field(default_factory=BrandPromptOverrides)
 
     def to_dict(self) -> dict:
@@ -60,6 +64,7 @@ class BrandProfile:
             "voice_notes": self.voice_notes,
             "target_market": self.target_market,
             "faq_count": self.faq_count,
+            "past_feedback": self.past_feedback,
             "prompt_overrides": self.prompt_overrides.to_dict(),
         }
 
@@ -74,6 +79,7 @@ class BrandProfile:
             voice_notes=data.get("voice_notes", ""),
             target_market=data.get("target_market", "UK"),
             faq_count=int(data.get("faq_count", 4)),
+            past_feedback=data.get("past_feedback", ""),
             prompt_overrides=overrides,
         )
 
@@ -108,6 +114,34 @@ def list_profiles() -> list[str]:
     if not _PROFILES_DIR.exists():
         return []
     return [p.stem for p in sorted(_PROFILES_DIR.glob("*.json"))]
+
+
+def build_brand_custom_context(profile: dict) -> str:
+    """Build the system-prompt-level brand context addendum.
+
+    Surfaces past feedback and banned phrases so every generation pass learns
+    from prior reviews. Past feedback appears first — it's the highest signal.
+    """
+    overrides_data = profile.get("prompt_overrides") or {}
+    past_feedback = (profile.get("past_feedback") or "").strip()
+
+    parts = []
+
+    if past_feedback:
+        parts.append(
+            "\nPAST FEEDBACK (from prior reviews — apply these lessons):\n"
+            f"{past_feedback}"
+        )
+
+    banned = overrides_data.get("banned_phrases") or []
+    if banned:
+        items = "\n".join(f"- {p}" for p in banned if p.strip())
+        if items:
+            parts.append(f"\nBRAND-BANNED PHRASES (never use):\n{items}")
+
+    if not parts:
+        return ""
+    return "".join(parts)
 
 
 def build_custom_rules_block(overrides: BrandPromptOverrides, element: str) -> str:

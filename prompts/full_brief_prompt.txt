@@ -44,8 +44,8 @@ e) Close with a trust signal (shipping, returns, warranty) and a specific CTA re
 
 Description rules:
 - ~{target_bottom_words} words target ({min_words}-{max_words} range acceptable), no paragraph over 3 sentences
-- Reference at least {min_usps} brand USPs
-- Naturally include secondary keywords
+- Reference brand USPs only where they're directly relevant to the section's topic. Skip USPs that don't fit.
+- Include secondary keywords where they fit naturally.
 - Every sentence must describe PRODUCTS or BRAND — not the shopping/browsing experience
 - Must pass the competitor test — include {brand_name}-specific details
 - Use concrete verbs, no AI-isms, no forced triads

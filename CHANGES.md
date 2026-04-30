@@ -1,5 +1,54 @@
 # Changes
 
+## Update — Past feedback log + softer brand voice quotas
+
+**Prompt 6 — two related changes in one pass**
+
+### Part A — Past feedback
+- `BrandProfile.past_feedback: str = ""` stores freeform client feedback across saves.
+- `BrandPromptOverrides.banned_phrases: list[str]` stores extracted phrase bans.
+- New `build_brand_custom_context(profile: dict) -> str` in `core/brand_profile.py`:
+  surfaces past feedback + banned phrases at the system-prompt level so every
+  generation pass applies lessons from prior reviews.
+- `ContentBrief.past_feedback: str = ""` forwards feedback to prompt builders.
+- `build_brief` and `build_briefs_for_batch` read `past_feedback` from client profile.
+- `build_system_prompt` calls `build_brand_custom_context` and passes result as
+  `{brand_custom_context}` into `prompts/system_prompt.txt`.
+- Brand Profile page gains a **Past feedback** textarea + "🔍 Extract bans from
+  feedback" button (Haiku-powered, manual trigger). Extracted phrases are shown
+  with checkboxes before being merged into the banned phrases field.
+- New `core/feedback_extractor.py` with `extract_banned_phrases(api_key, feedback)`.
+
+### Part B — Softer brand voice quotas
+- All USP requirements changed from mandatory to advisory across all prompts.
+- `prompts/system_prompt.txt`: removed `{min_usps}` quota; model uses USPs at
+  its discretion rather than as a checklist.
+- `prompts/description_prompt.txt`, `prompts/bottom_of_page_copy_prompt.txt`,
+  `prompts/full_brief_prompt.txt`: replaced "Reference at least N brand USPs"
+  with optional guidance.
+- `prompts/faq_prompt.txt`: brand specificity rule softened to avoid shoehorning
+  the brand name into every answer.
+- `core/validator.py`: USP and secondary keyword checks in `validate_description`
+  and `validate_bottom_copy` now always pass (`passed=True`) with advisory messages.
+- `config/methodology_rules.json`: added `top_copy_suggested_usps`,
+  `bottom_copy_suggested_usps`, `bottom_copy_suggested_secondary_keywords` keys.
+- `config/audit_checklist.json`: `description_mentions_usps` impact changed
+  `"high"` → `"low"`.
+
+**Files touched:** `core/brand_profile.py`, `core/brief_builder.py`,
+`core/content_generator.py`, `core/validator.py`,
+`core/feedback_extractor.py` (new),
+`config/methodology_rules.json`, `config/audit_checklist.json`,
+`prompts/system_prompt.txt`, `prompts/description_prompt.txt`,
+`prompts/bottom_of_page_copy_prompt.txt`, `prompts/full_brief_prompt.txt`,
+`prompts/faq_prompt.txt`,
+`pages/0_🏷️_Brand_Profile.py`, `pages/6_✏️_Single_URL_Writer.py`,
+`tests/test_brand_profile.py` (extended),
+`tests/test_feedback_extractor.py` (new).
+
+---
+
+
 ## Update — KD-scaled bottom copy length
 
 **Prompt 1 — `calculate_target_word_counts` + bottom copy scaling**

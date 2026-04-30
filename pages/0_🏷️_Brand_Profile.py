@@ -84,6 +84,73 @@ with pc2:
         placeholder="e.g. Warm, approachable. Speaks to style-conscious women 25-45.",
     )
 
+# ─── Past feedback ───────────────────────────────────────────────────────
+
+st.divider()
+st.subheader("Past feedback")
+st.caption(
+    "Paste rejected content, client comments, or specific guidance from prior reviews. "
+    "This gets injected into every prompt so the model learns from past mistakes."
+)
+
+bp_past_feedback = st.text_area(
+    "Past feedback log",
+    value=_loaded.past_feedback,
+    height=200,
+    key="bp_past_feedback",
+    placeholder=(
+        "e.g.\n"
+        "- Client rejected last batch's FAQs for being too formal — keep them conversational.\n"
+        "- Stop using 'perfect for' — flagged as filler in two reviews.\n"
+        "- Top copy was over-pushing the warranty USP. Mention it once max, not every page.\n"
+        "- The phrase 'discover our range' was rejected by Stanley reviewer."
+    ),
+    help=(
+        "Freeform text. The model sees this as 'past feedback to apply'. "
+        "Use natural language — it doesn't need to be structured."
+    ),
+)
+
+extract_col, _ = st.columns([1, 3])
+with extract_col:
+    extract_clicked = st.button(
+        "🔍 Extract bans from feedback",
+        use_container_width=True,
+        disabled=not bp_past_feedback.strip(),
+        help="Uses Haiku to find specific phrases mentioned as rejected. You'll review before saving.",
+    )
+
+if extract_clicked:
+    from core.feedback_extractor import extract_banned_phrases
+    api_key = st.session_state.get("bifrost_api_key", "") or st.session_state.get("api_key", "")
+    if not api_key:
+        st.error("Bifrost API key not set. Add it on the Home page first.")
+    else:
+        with st.spinner("Extracting banned phrases..."):
+            try:
+                extracted = extract_banned_phrases(api_key, bp_past_feedback)
+                st.session_state["_pending_extracted_bans"] = extracted
+            except Exception as e:
+                st.error(f"Extraction failed: {e}")
+
+pending = st.session_state.get("_pending_extracted_bans", [])
+if pending:
+    st.markdown("**Extracted phrases — review before adding to banned list:**")
+    keep = []
+    for i, phrase in enumerate(pending):
+        if st.checkbox(f"`{phrase}`", value=True, key=f"keep_ban_{i}"):
+            keep.append(phrase)
+    if st.button("Add selected to banned phrases"):
+        existing_bans = [b.strip() for b in (_loaded.prompt_overrides.banned_phrases or []) if b.strip()]
+        also_in_area = st.session_state.get("bp_banned_phrases", "")
+        area_bans = [b.strip() for b in also_in_area.split("\n") if b.strip()]
+        all_existing = list(dict.fromkeys(existing_bans + area_bans))
+        merged = all_existing + [p for p in keep if p not in all_existing]
+        st.session_state["_bp_banned_phrases_merged"] = merged
+        st.session_state.pop("_pending_extracted_bans", None)
+        st.success(f"Added {len(keep)} phrases. Review the 'Banned phrases' field below and save.")
+        st.rerun()
+
 # ─── FAQ settings ────────────────────────────────────────────────────────
 
 with st.expander("❓ FAQ Settings", expanded=False):
@@ -115,6 +182,16 @@ with st.expander("✏️ Prompt Override Rules", expanded=False):
         key="bp_voice_examples",
         height=80,
         placeholder="Paste examples of approved copy in the brand's voice (one per line).",
+    )
+    _merged_bans = st.session_state.pop("_bp_banned_phrases_merged", None)
+    _default_bans = "\n".join(_merged_bans) if _merged_bans is not None else "\n".join(overrides.banned_phrases or [])
+    bp_banned_phrases = st.text_area(
+        "Banned phrases (one per line)",
+        value=_default_bans,
+        key="bp_banned_phrases",
+        height=100,
+        placeholder="e.g.\nperfect for\ndiscover our range\nwhether you're looking for",
+        help="These phrases will never appear in generated content. Add manually or extract from feedback above.",
     )
 
 # ─── Alt text settings ───────────────────────────────────────────────────
@@ -150,11 +227,13 @@ with sc1:
             voice_notes=bp_voice_notes.strip(),
             target_market=bp_target_market,
             faq_count=int(bp_faq_count),
+            past_feedback=bp_past_feedback.strip(),
             prompt_overrides=BrandPromptOverrides(
                 brand_custom_rules=bp_custom_rules.strip(),
                 voice_examples=bp_voice_examples.strip(),
                 alt_text_rules=bp_alt_rules.strip(),
                 alt_text_examples=bp_alt_examples.strip(),
+                banned_phrases=[p.strip() for p in bp_banned_phrases.strip().split("\n") if p.strip()],
             ),
         )
         save_profile(profile)
@@ -171,11 +250,13 @@ with sc2:
             "voice_notes": bp_voice_notes.strip(),
             "target_market": bp_target_market,
             "faq_count": int(bp_faq_count),
+            "past_feedback": bp_past_feedback.strip(),
         }
         st.session_state["prompt_overrides"] = {
             "brand_custom_rules": bp_custom_rules.strip(),
             "voice_examples": bp_voice_examples.strip(),
             "alt_text_rules": bp_alt_rules.strip(),
             "alt_text_examples": bp_alt_examples.strip(),
+            "banned_phrases": [p.strip() for p in bp_banned_phrases.strip().split("\n") if p.strip()],
         }
         st.success("Profile applied to session. Head to the Content Studio to generate content.")

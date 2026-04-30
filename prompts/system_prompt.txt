@@ -11,10 +11,11 @@ CORE PRINCIPLES:
 METHODOLOGY CONSTRAINTS (non-negotiable):
 - Collection descriptions MUST be between {min_words} and {max_words} words. Never exceed {hard_ceiling} words.
 - No paragraph may exceed 3 sentences. Use short, scannable blocks.
-- Every description MUST reference at least {min_usps} brand USPs from the provided list.
-- Every description MUST include {min_product_links}-{max_product_links} internal product links formatted as markdown links.
-- Every description MUST include {min_collection_links}-{max_collection_links} related collection links formatted as markdown links.
-- Every description MUST naturally incorporate at least 1 secondary keyword.
+- Top copy SHOULD include {min_product_links}-{max_product_links} internal product links formatted as markdown links.
+- Bottom copy SHOULD include {min_product_links}-{max_product_links} product links + {min_collection_links}-{max_collection_links} collection links.
+- Both zones should naturally incorporate secondary keywords where they fit — don't force them.
+- Reference brand USPs ONLY where they genuinely add information for the shopper. Do not include them as a checklist; if a USP isn't relevant to the specific products in this collection, leave it out.
+- Use brand voice notes to shape tone — don't quote them. Voice guides HOW you write, not WHAT you say.
 - NEVER write "What is [product]?" definitions.
 - NEVER write generic buying guide content in descriptions.
 - NEVER write content that could appear unchanged on a competitor's site.
@@ -82,5 +83,7 @@ CLIENT CONTEXT:
 - Brand USPs: {usps}
 - Brand Voice Notes: {voice_notes}
 - Target Market: {target_market}
+
+{brand_custom_context}
 
 Respond with only the requested content. Do not include explanations or meta-commentary.

@@ -118,13 +118,12 @@ def validate_description(
         severity="warning" if sec_found < min_sec else "info",
     ))
 
-    # USP matches
+    # USPs — informational only (model uses them at its discretion)
     usp_count = _count_usp_matches(text, brand_usps)
-    min_usps = ci["description_min_usps"]
     results.append(ValidationResult(
-        rule="brand_usps", passed=usp_count >= min_usps,
-        message=f"{usp_count}/{len(brand_usps)} USPs referenced (min: {min_usps})",
-        severity="error" if usp_count < min_usps else "info",
+        rule="brand_usps", passed=True,
+        message=f"{usp_count}/{len(brand_usps)} USPs referenced (advisory)",
+        severity="info",
     ))
 
     # Internal links
@@ -333,19 +332,18 @@ def validate_bottom_copy(
     ))
 
     sec_found = sum(1 for kw in secondary_keywords if _check_keyword_present(text, kw))
-    min_sec = ci["description_min_secondary_keywords"]
     results.append(ValidationResult(
-        rule="secondary_keywords", passed=sec_found >= min_sec,
-        message=f"{sec_found}/{len(secondary_keywords)} secondary keywords included (min: {min_sec})",
-        severity="warning" if sec_found < min_sec else "info",
+        rule="secondary_keywords", passed=True,
+        message=f"{sec_found}/{len(secondary_keywords)} secondary keywords included (advisory)",
+        severity="info",
     ))
 
+    # USPs — informational only
     usp_count = _count_usp_matches(text, brand_usps)
-    min_usps = ci["description_min_usps"]
     results.append(ValidationResult(
-        rule="brand_usps", passed=usp_count >= min_usps,
-        message=f"{usp_count}/{len(brand_usps)} USPs referenced (min: {min_usps})",
-        severity="error" if usp_count < min_usps else "info",
+        rule="brand_usps", passed=True,
+        message=f"{usp_count}/{len(brand_usps)} USPs referenced (advisory)",
+        severity="info",
     ))
 
     link_count = _count_links(text)
