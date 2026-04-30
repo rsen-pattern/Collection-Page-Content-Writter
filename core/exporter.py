@@ -7,6 +7,8 @@ from typing import Optional
 
 import pandas as pd
 
+from core.schema import build_faq_schema, build_itemlist_schema, schema_to_script_tag
+
 
 def _markdown_to_html(text: str) -> str:
     """Convert markdown links to HTML links."""
@@ -15,6 +17,51 @@ def _markdown_to_html(text: str) -> str:
         r'<a href="\2">\1</a>',
         text,
     )
+
+
+def _build_shopify_body_html(content: dict) -> str:
+    """Build the full Body HTML for a Shopify collection page.
+
+    Combines description copy, FAQ HTML, and JSON-LD schema blocks.
+    Falls back to `description` when top/bottom_of_page_copy are absent
+    so the exporter works with both the old single-description format and
+    the new split format.
+    """
+    parts = []
+
+    top = content.get("top_of_page_copy", "")
+    if top:
+        parts.append("<!-- TOP OF PAGE -->\n" + _markdown_to_html(top))
+
+    bottom = content.get("bottom_of_page_copy", "") or content.get("description", "")
+    if bottom:
+        parts.append("<!-- BOTTOM OF PAGE -->\n" + _markdown_to_html(bottom))
+
+    faqs = content.get("faqs", [])
+    if faqs:
+        faq_html = '<div class="collection-faqs">'
+        for faq in faqs:
+            faq_html += '<div class="faq-item">'
+            faq_html += f'<h3>{faq.get("question", "")}</h3>'
+            faq_html += f'<p>{faq.get("answer", "")}</p>'
+            faq_html += "</div>"
+        faq_html += "</div>"
+        parts.append(faq_html)
+
+    faq_schema_tag = schema_to_script_tag(build_faq_schema(faqs))
+    if faq_schema_tag:
+        parts.append("<!-- FAQ Schema -->\n" + faq_schema_tag)
+
+    products = content.get("products", []) or content.get("products_to_link", [])
+    collection_url = content.get("collection_url", "")
+    collection_name = content.get("collection_name", "")
+    item_schema_tag = schema_to_script_tag(
+        build_itemlist_schema(products, collection_url, collection_name)
+    )
+    if item_schema_tag:
+        parts.append("<!-- ItemList Schema -->\n" + item_schema_tag)
+
+    return "\n\n".join(parts)
 
 
 def export_keyword_map(
@@ -123,19 +170,14 @@ def export_shopify_csv(
     rows = []
     for col in collections:
         content = col.get("content", {})
-        description_html = _markdown_to_html(content.get("description", ""))
 
-        # Add FAQ HTML if present
-        faqs = content.get("faqs", [])
-        if faqs:
-            faq_html = '<div class="collection-faqs">'
-            for faq in faqs:
-                faq_html += f'<div class="faq-item">'
-                faq_html += f'<h3>{faq.get("question", "")}</h3>'
-                faq_html += f'<p>{faq.get("answer", "")}</p>'
-                faq_html += "</div>"
-            faq_html += "</div>"
-            description_html += "\n" + faq_html
+        content_with_meta = {
+            **content,
+            "collection_url": col.get("collection_url", ""),
+            "collection_name": col.get("collection_name", ""),
+            "products": col.get("products_to_link", []),
+        }
+        body_html = _build_shopify_body_html(content_with_meta)
 
         url = col.get("collection_url", "")
         handle = url.rstrip("/").split("/")[-1] if "/collections/" in url else ""
@@ -143,7 +185,7 @@ def export_shopify_csv(
         rows.append({
             "Handle": handle,
             "Title": content.get("collection_title", col.get("collection_name", "")),
-            "Body HTML": description_html,
+            "Body HTML": body_html,
             "Meta Title": content.get("seo_title", ""),
             "Meta Description": content.get("meta_description", ""),
         })
@@ -209,14 +251,58 @@ def generate_copy_paste_cards(collections: list[dict]) -> list[dict]:
     cards = []
     for col in collections:
         content = col.get("content", {})
+        collection_url = col.get("collection_url", "")
+        collection_name = col.get("collection_name", "")
+
+        faq_schema_html = schema_to_script_tag(build_faq_schema(content.get("faqs", [])))
+        item_schema_html = schema_to_script_tag(
+            build_itemlist_schema(
+                col.get("products_to_link", []),
+                collection_url,
+                collection_name,
+            )
+        )
+
+        description = content.get("description", "")
         cards.append({
-            "collection_name": col.get("collection_name", ""),
-            "collection_url": col.get("collection_url", ""),
+            "collection_name": collection_name,
+            "collection_url": collection_url,
             "seo_title": content.get("seo_title", ""),
             "collection_title": content.get("collection_title", ""),
             "meta_description": content.get("meta_description", ""),
-            "description": content.get("description", ""),
-            "description_html": _markdown_to_html(content.get("description", "")),
+            "description": description,
+            "description_html": _markdown_to_html(description),
             "faqs": content.get("faqs", []),
+            "faq_schema_html": faq_schema_html,
+            "item_schema_html": item_schema_html,
         })
     return cards
+
+
+def export_alt_text(alt_text_results: list[dict]) -> io.BytesIO:
+    """Export alt-text suggestions as XLSX for Shopify bulk update.
+
+    Columns match Matrixify Products format so the user can paste the
+    Suggested Alt column directly into a Shopify bulk image update.
+    """
+    rows = []
+    for r in alt_text_results:
+        rows.append({
+            "Handle": r.get("handle", ""),
+            "Product Name": r.get("name", ""),
+            "Image Src": r.get("image", ""),
+            "Original Alt": r.get("original_alt", ""),
+            "Suggested Alt": r.get("suggested_alt", ""),
+            "Model Used": r.get("model_used", ""),
+        })
+    df = pd.DataFrame(rows)
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Alt Text Suggestions", index=False)
+        ws = writer.sheets["Alt Text Suggestions"]
+        for column in ws.columns:
+            ws.column_dimensions[column[0].column_letter].width = min(
+                max(len(str(c.value or "")) for c in column) + 2, 60
+            )
+    buffer.seek(0)
+    return buffer

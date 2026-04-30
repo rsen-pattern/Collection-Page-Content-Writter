@@ -7,6 +7,17 @@
       "upper_limit_warn": 400,
       "hard_ceiling": 500
     },
+    "top_of_page_copy": {
+      "sweet_spot_min_words": 50,
+      "sweet_spot_max_words": 80
+    },
+    "bottom_of_page_copy": {
+      "sweet_spot_min_words": 100,
+      "sweet_spot_max_words": 1000,
+      "minimum_viable_words": 75,
+      "upper_limit_warn_words": 1000,
+      "hard_ceiling_words": 1100
+    },
     "seo_title": {
       "min_chars": 50,
       "max_chars": 60
@@ -15,10 +26,12 @@
       "max_chars": 155
     },
     "faq": {
-      "count_min": 2,
-      "count_max": 3,
+      "count_min": 3,
+      "count_max": 8,
+      "count_default": 4,
+      "answer_words_max": 250,
       "answer_sentences_min": 2,
-      "answer_sentences_max": 3
+      "answer_sentences_max": 4
     }
   },
   "content_inclusion": {

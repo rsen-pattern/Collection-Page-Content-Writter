@@ -279,6 +279,91 @@ def validate_meta_description(
     return validation
 
 
+def validate_bottom_copy(
+    text: str,
+    primary_keyword: str,
+    secondary_keywords: list[str],
+    brand_usps: list[str],
+    target_word_count: int = 200,
+) -> ContentValidation:
+    """Validate bottom-of-page copy with KD-scaled word count target.
+
+    The sweet-spot range is derived from the brief's target_word_count (±25/30%)
+    so high-KD collections with 800-word targets validate differently to low-KD
+    collections with 125-word targets. Global config supplies absolute bounds.
+    """
+    rules = _load_rules()
+    cl = rules["content_length"]["bottom_of_page_copy"]
+    ci = rules["content_inclusion"]
+    results = []
+
+    wc = _count_words(text)
+    sweet_min = max(int(target_word_count * 0.75), cl["minimum_viable_words"])
+    sweet_max = min(int(target_word_count * 1.30), cl["hard_ceiling_words"])
+
+    if wc > cl["hard_ceiling_words"]:
+        results.append(ValidationResult(
+            rule="word_count", passed=False,
+            message=f"Word count ({wc}) exceeds hard ceiling of {cl['hard_ceiling_words']}",
+            severity="error",
+        ))
+    elif wc < cl["minimum_viable_words"]:
+        results.append(ValidationResult(
+            rule="word_count", passed=False,
+            message=f"Word count ({wc}) is below minimum viable of {cl['minimum_viable_words']}",
+            severity="error",
+        ))
+    elif sweet_min <= wc <= sweet_max:
+        results.append(ValidationResult(
+            rule="word_count", passed=True,
+            message=f"Word count ({wc}) is on target ({sweet_min}-{sweet_max} for KD-target {target_word_count})",
+        ))
+    else:
+        results.append(ValidationResult(
+            rule="word_count", passed=False,
+            message=f"Word count ({wc}) is outside target range ({sweet_min}-{sweet_max} for KD-target {target_word_count})",
+            severity="warning",
+        ))
+
+    has_primary = _check_keyword_present(text, primary_keyword)
+    results.append(ValidationResult(
+        rule="primary_keyword", passed=has_primary,
+        message=f"Primary keyword '{primary_keyword}' {'found' if has_primary else 'not found'}",
+        severity="error" if not has_primary else "info",
+    ))
+
+    sec_found = sum(1 for kw in secondary_keywords if _check_keyword_present(text, kw))
+    min_sec = ci["description_min_secondary_keywords"]
+    results.append(ValidationResult(
+        rule="secondary_keywords", passed=sec_found >= min_sec,
+        message=f"{sec_found}/{len(secondary_keywords)} secondary keywords included (min: {min_sec})",
+        severity="warning" if sec_found < min_sec else "info",
+    ))
+
+    usp_count = _count_usp_matches(text, brand_usps)
+    min_usps = ci["description_min_usps"]
+    results.append(ValidationResult(
+        rule="brand_usps", passed=usp_count >= min_usps,
+        message=f"{usp_count}/{len(brand_usps)} USPs referenced (min: {min_usps})",
+        severity="error" if usp_count < min_usps else "info",
+    ))
+
+    link_count = _count_links(text)
+    min_links = ci["description_product_links_min"]
+    max_links = ci["description_product_links_max"]
+    results.append(ValidationResult(
+        rule="internal_links", passed=link_count >= min_links,
+        message=f"{link_count} internal links (target: {min_links}-{max_links})",
+        severity="error" if link_count < min_links else "info",
+    ))
+
+    validation = ContentValidation(element="bottom_copy", results=results)
+    validation.error_count = sum(1 for r in results if not r.passed and r.severity == "error")
+    validation.warning_count = sum(1 for r in results if not r.passed and r.severity == "warning")
+    validation.all_passed = validation.error_count == 0
+    return validation
+
+
 def validate_faqs(
     faqs: list[dict],
     brand_name: str = "",

@@ -1,0 +1,53 @@
+Write a conversion-optimized, GEO-ready bottom-of-page copy section for the following collection page. The goal is to capture mid-funnel shoppers who are comparing options, while creating structured content that AI search engines can easily extract and cite.
+
+COLLECTION CONTEXT:
+- Collection: {collection_name}
+- Primary Keyword: {primary_keyword} (Volume: {volume})
+- Secondary Keywords: {secondary_keywords}
+- Products to Link: {product_links}
+- Related Collections: {related_collections}
+{existing_content_block}
+WORD COUNT & FORMAT:
+- Target: ~{target_word_count} words ({min_words}-{max_words} range). Hard minimum 75, hard maximum 1000.
+- No paragraph may exceed 3 sentences
+- Write for skimmers: use whitespace, bold key benefits, and descriptive headings
+
+HEADING RULES:
+- For target word counts ≤ 250: use H3 (### Section Title) only. 2-3 sections.
+- For target word counts > 250: use H2 (## Major Section) for major sections + H3 (### Sub-section) for sub-points within them. 3-5 H2 sections, 1-2 H3 sub-points each.
+- Headings MUST be descriptive and target a secondary keyword or shopper concern (sizing, materials, care, use cases, who-it's-for).
+- NEVER use template labels as headings ("Hook", "BLUF", "Feature-to-Benefit", "Trust Section").
+- Good: "## How to choose your fit", "### Why our cotton blend lasts longer"
+- Bad: "## Section 1", "### Hook"
+
+REQUIRED CONTENT ELEMENTS:
+- Reference at least {min_usps} of these brand USPs: {usps}
+- Include {min_product_links}-{max_product_links} internal product links as markdown links using exact-match descriptive anchor text
+- Include {min_collection_links}-{max_collection_links} related collection links as markdown links
+- Naturally include at least 1 secondary keyword
+- NEVER use (#) placeholder links — use real URLs from the provided list, or construct realistic relative paths from product/collection names
+
+INTERNAL STRUCTURE (follow this flow, but DO NOT use these labels as headings):
+
+1. Open with what this collection offers and who it's for. Include the primary keyword. No definitions.
+
+2. In 2-3 sentences, answer: "What makes this range worth buying from {brand_name}?" Reference specific product features, materials, or formulations.
+
+3. Translate specific product features into tangible customer benefits. Bold key terms. Be specific about what makes these products different from competitors.
+
+4. Guide shoppers to specific products and related collections. Write 1 sentence per link explaining what the product IS, not how the website works.
+
+5. Close with a trust signal and a CTA specific to this collection.
+
+CONTENT QUALITY RULES:
+- Every sentence must describe PRODUCTS or the BRAND — never the shopping/browsing experience
+- This content MUST include specific details about {brand_name} that could NOT appear on a competitor's page
+- Weave keywords in naturally — no stuffing
+- Use concrete verbs ("is", "has") not inflated ones ("boasts", "features", "serves as")
+- No AI-isms: "Additionally", "Whether you're looking for...", "testament", "landscape"
+- No forced triads or synonym cycling
+- No filler about "easy checkout", "comparing options", "browsing to checkout", "convenient delivery"
+- Tone: knowledgeable, direct, helpful — like talking to someone who actually uses these products
+
+OUTPUT:
+Return ONLY the collection copy text with markdown formatting (descriptive headings, bold, real links). No labels, no explanations, no meta-commentary.

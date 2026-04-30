@@ -29,12 +29,48 @@ st.markdown("## 1. Collection Details")
 col_left, col_right = st.columns(2)
 
 with col_left:
-    collection_url = st.text_input(
-        "Collection URL *",
-        placeholder="https://yourstore.com/collections/example",
-    )
+    url_col_a, url_col_b = st.columns([3, 1])
+    with url_col_a:
+        collection_url = st.text_input(
+            "Collection URL *",
+            placeholder="https://yourstore.com/collections/example",
+            key="single_url_url_input",
+        )
+    with url_col_b:
+        st.markdown("&nbsp;", unsafe_allow_html=True)
+        fetch_clicked = st.button(
+            "🔍 Fetch",
+            help="Fetch real products + existing copy from Shopify JSON",
+            disabled=not bool(st.session_state.get("single_url_url_input", "")),
+            use_container_width=True,
+        )
+
+    if fetch_clicked and collection_url:
+        from core.scraper import fetch_collection_data
+        with st.spinner("Fetching collection data…"):
+            scrape_result = fetch_collection_data(collection_url)
+        if scrape_result.source == "failed":
+            st.error(f"Couldn't fetch: {scrape_result.error}")
+        else:
+            if scrape_result.h1:
+                st.session_state["_single_prefill_name"] = scrape_result.h1
+            product_lines = [f"{p.name} | {p.url}" for p in scrape_result.products[:20]]
+            st.session_state["_single_prefill_products"] = "\n".join(product_lines)
+            st.session_state["_existing_top"] = scrape_result.existing_top_copy
+            st.session_state["_existing_bottom"] = scrape_result.existing_bottom_copy
+            st.session_state["_single_scraped_products"] = [p.model_dump() for p in scrape_result.products]
+            st.success(f"Fetched {len(scrape_result.products)} products via {scrape_result.source}.")
+            st.rerun()
+
+    if st.session_state.get("_existing_top"):
+        with st.expander("📄 Existing top-of-page copy on the live site (reference)"):
+            st.text(st.session_state["_existing_top"])
+    if st.session_state.get("_existing_bottom"):
+        with st.expander("📄 Existing bottom-of-page copy on the live site (reference)"):
+            st.text(st.session_state["_existing_bottom"])
     collection_name = st.text_input(
         "Collection Name *",
+        value=st.session_state.pop("_single_prefill_name", ""),
         placeholder="e.g. Waterproof Necklaces",
     )
     primary_keyword = st.text_input(
@@ -86,6 +122,7 @@ ci_left, ci_right = st.columns(2)
 with ci_left:
     products_text = st.text_area(
         "Products to Link (one per line: Product Name | /products/handle)",
+        value=st.session_state.pop("_single_prefill_products", ""),
         placeholder="Gold Snake Chain | /products/gold-snake-chain\nSilver Pendant | /products/silver-pendant",
         height=100,
     )
@@ -203,6 +240,16 @@ if st.button(
     from core.brief_builder import build_brief
     from core.content_generator import generate_content, humanize_content
 
+    # Combine scraped existing copy with manually entered existing content
+    scraped_existing = "\n\n".join(filter(None, [
+        st.session_state.get("_existing_top", ""),
+        st.session_state.get("_existing_bottom", ""),
+    ]))
+    combined_existing = "\n\n".join(filter(None, [
+        scraped_existing,
+        existing_content_text.strip(),
+    ]))
+
     brief = build_brief(
         collection_url=collection_url,
         collection_name=collection_name,
@@ -218,7 +265,7 @@ if st.button(
         related_collections=related_collections,
         paa_questions=paa_questions,
         keyword_difficulty=float(keyword_difficulty),
-        existing_content=existing_content_text.strip(),
+        existing_content=combined_existing,
     )
 
     with st.spinner("Generating content..."):
@@ -405,6 +452,16 @@ if content:
             for vr in v.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
                 st.markdown(f"{icon} {vr.message}")
+
+            from core.schema import build_faq_schema, schema_to_script_tag as _s2t
+            _faq_schema = build_faq_schema([
+                {"question": f["question"], "answer": f["answer"]}
+                for f in updated_faqs if f.get("question") and f.get("answer")
+            ])
+            if _faq_schema:
+                with st.expander("📋 FAQ JSON-LD schema (copy-paste into Shopify)", expanded=False):
+                    st.code(_s2t(_faq_schema), language="html")
+                    st.caption("Paste this in your collection page's HTML editor or theme custom-fields.")
 
         # Add blank FAQ
         if st.button("+ Add FAQ"):

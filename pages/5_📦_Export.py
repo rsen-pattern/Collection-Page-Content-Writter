@@ -125,6 +125,28 @@ with ec3:
 
 st.markdown("---")
 
+# --- Alt Text Export ---
+all_alt: list[dict] = []
+for _key, _val in st.session_state.items():
+    if isinstance(_key, str) and _key.startswith("alt_results_") and _val:
+        all_alt.extend(_val)
+
+if all_alt:
+    from core.exporter import export_alt_text
+    st.markdown("### Alt Text Suggestions (XLSX)")
+    st.markdown(
+        f"**{len(all_alt)} products** with generated alt text across all collections. "
+        "Download and paste the Suggested Alt column into Shopify's bulk image update."
+    )
+    alt_buf = export_alt_text(all_alt)
+    st.download_button(
+        "🖼️ Download alt-text suggestions",
+        data=alt_buf,
+        file_name=f"alt_text_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    st.markdown("---")
+
 # --- Copy-Paste Cards ---
 st.markdown("## Copy-Paste Cards")
 st.markdown("One card per collection with clearly labeled fields. Copy directly into Shopify admin.")

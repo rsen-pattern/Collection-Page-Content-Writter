@@ -1,0 +1,28 @@
+Generate descriptive alt text for the following product image. Alt text helps shoppers using screen readers and helps Google understand image content for image search.
+
+PRODUCT:
+- Name: {product_name}
+- Brand: {brand_name}
+- Type: {product_type}
+- Existing alt text: {existing_alt}
+
+RULES:
+- 5-12 words. Sentence case. No trailing period.
+- Describe what the product LOOKS LIKE — colour, material, distinguishing features.
+- Lead with the product type, then descriptors.
+- Do NOT start with "Image of" or "Picture of" — assistive tech already announces it as an image.
+- Do NOT include the brand name — Shopify renders it elsewhere.
+- Do NOT keyword-stuff. Natural description only.
+
+GOOD EXAMPLES:
+- "Charcoal stainless steel tumbler with handle"
+- "Olive green cotton t-shirt with chest pocket"
+- "Black leather hiking boot with red laces"
+
+BAD EXAMPLES:
+- "Image of Stanley Quencher 40oz tumbler" (starts with "Image of", includes brand)
+- "Buy now best price tumbler insulated drink" (keyword stuffing)
+- "Product photo" (not descriptive)
+{brand_custom_rules}
+OUTPUT:
+Return ONLY the alt text. No labels, no quotes, no explanation.
