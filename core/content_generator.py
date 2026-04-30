@@ -21,6 +21,7 @@ class GeneratedContent(BaseModel):
     faqs: list[dict] = Field(default_factory=list)  # [{question, answer}]
     suggested_headings: list[str] = Field(default_factory=list)
     suggested_tags: list[str] = Field(default_factory=list)
+    alt_text: str = ""
     approved: bool = False
 
 
@@ -110,6 +111,10 @@ def build_full_brief_prompt(
             f"```\n{brief.existing_content}\n```\n"
         )
 
+    bottom_target = brief.target_bottom_word_count
+    bottom_min = max(int(bottom_target * 0.75), 75)
+    bottom_max = min(int(bottom_target * 1.30), 1000)
+
     return template.format(
         collection_name=brief.collection_name,
         primary_keyword=brief.primary_keyword,
@@ -124,8 +129,9 @@ def build_full_brief_prompt(
         voice_notes=brief.voice_notes or "No specific voice notes.",
         target_market=brief.target_market,
         target_word_count=brief.target_word_count,
-        min_words=cl["sweet_spot_min"],
-        max_words=cl["sweet_spot_max"],
+        target_bottom_words=bottom_target,
+        min_words=bottom_min,
+        max_words=bottom_max,
         min_usps=ci["description_min_usps"],
         min_product_links=ci["description_product_links_min"],
         max_product_links=ci["description_product_links_max"],
@@ -187,6 +193,78 @@ def build_description_prompt(
         usps="\n".join(f"- {usp}" for usp in brief.brand_usps),
         brand_name=brief.brand_name,
         existing_content_block=existing_content_block,
+    )
+
+
+def build_bottom_copy_prompt(brief: ContentBrief) -> str:
+    """Build the bottom-of-page copy generation prompt with KD-scaled word count."""
+    rules = _load_methodology_rules()
+    template = _load_prompt("bottom_of_page_copy_prompt.txt")
+    ci = rules["content_inclusion"]
+
+    target = brief.target_bottom_word_count
+    min_words = max(int(target * 0.75), 75)
+    max_words = min(int(target * 1.30), 1000)
+
+    product_links_str = (
+        "\n".join(f"- [{p['name']}]({p['url']})" for p in brief.products_to_link)
+        if brief.products_to_link
+        else "No specific products — use placeholder product names."
+    )
+
+    related_str = (
+        "\n".join(f"- [{c['name']}]({c['url']})" for c in brief.related_collections)
+        if brief.related_collections
+        else "No related collections — use placeholder names."
+    )
+
+    existing_content_block = ""
+    if brief.existing_content:
+        existing_content_block = (
+            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
+            "The page currently has the following content. Use it as context — retain any "
+            "brand-specific facts, product details, or tone that works well, but rewrite and "
+            "improve rather than copying:\n"
+            f"```\n{brief.existing_content}\n```\n"
+        )
+
+    return template.format(
+        collection_name=brief.collection_name,
+        primary_keyword=brief.primary_keyword,
+        volume=brief.primary_keyword_volume or "N/A",
+        secondary_keywords=", ".join(brief.secondary_keywords),
+        product_links=product_links_str,
+        related_collections=related_str,
+        target_word_count=target,
+        min_words=min_words,
+        max_words=max_words,
+        min_usps=ci["description_min_usps"],
+        min_product_links=ci["description_product_links_min"],
+        max_product_links=ci["description_product_links_max"],
+        min_collection_links=ci["description_collection_links_min"],
+        max_collection_links=ci["description_collection_links_max"],
+        usps="\n".join(f"- {usp}" for usp in brief.brand_usps),
+        brand_name=brief.brand_name,
+        existing_content_block=existing_content_block,
+    )
+
+
+def build_alt_text_prompt(brief: ContentBrief, product: dict) -> str:
+    """Build the alt text generation prompt for a single product."""
+    from core.brand_profile import BrandPromptOverrides, build_custom_rules_block
+    template = _load_prompt("alt_text_prompt.txt")
+    overrides_data = brief.prompt_overrides or {}
+    overrides = BrandPromptOverrides(
+        alt_text_rules=overrides_data.get("alt_text_rules", ""),
+        alt_text_examples=overrides_data.get("alt_text_examples", ""),
+    )
+    custom_rules = build_custom_rules_block(overrides, "alt_text")
+    return template.format(
+        product_name=product.get("name", ""),
+        brand_name=brief.brand_name,
+        product_type=product.get("product_type", ""),
+        existing_alt=product.get("image_alt", "") or "(none)",
+        brand_custom_rules=f"\n{custom_rules}" if custom_rules else "",
     )
 
 
@@ -450,6 +528,7 @@ def generate_content(
     batch_faq_topics: list[str] = None,
     model: str = "anthropic/claude-sonnet-4-6",
     base_url: str = "https://bifrost.pattern.com",
+    **kwargs,
 ) -> GeneratedContent:
     """Generate content via Bifrost API gateway (OpenAI-compatible).
 
@@ -479,10 +558,17 @@ def generate_content(
         user_prompt = build_full_brief_prompt(brief, batch_faq_topics)
     elif generation_type == "description":
         user_prompt = build_description_prompt(brief)
+    elif generation_type == "bottom_copy":
+        user_prompt = build_bottom_copy_prompt(brief)
     elif generation_type == "titles":
         user_prompt = build_title_prompt(brief)
     elif generation_type == "faqs":
         user_prompt = build_faq_prompt(brief, batch_faq_topics)
+    elif generation_type == "alt_text":
+        product = kwargs.get("product")
+        if product is None:
+            raise ValueError("alt_text generation requires product= kwarg")
+        user_prompt = build_alt_text_prompt(brief, product)
     else:
         raise ValueError(f"Unknown generation type: {generation_type}")
 
@@ -523,7 +609,7 @@ def generate_content(
         result.faqs = parsed["faqs"]
         result.suggested_headings = parsed.get("suggested_headings", [])
         result.suggested_tags = parsed.get("suggested_tags", [])
-    elif generation_type == "description":
+    elif generation_type in ("description", "bottom_copy"):
         result.description = response_text.strip()
     elif generation_type == "titles":
         parsed = parse_title_response(response_text)
@@ -531,5 +617,7 @@ def generate_content(
         result.collection_title = parsed["collection_title"]
     elif generation_type == "faqs":
         result.faqs = parse_faqs(response_text)
+    elif generation_type == "alt_text":
+        result.alt_text = response_text.strip()
 
     return result, used_model

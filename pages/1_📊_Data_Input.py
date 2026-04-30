@@ -334,4 +334,38 @@ if st.session_state.collection_groups:
                     st.caption(f"... and {len(group.secondary_keywords) - 10} more")
 
     st.markdown("---")
+
+    # --- Product scraping ---
+    st.markdown("### Shopify Product Scraper (optional)")
+    st.markdown(
+        "Fetch real product data from each collection URL so generated copy references actual "
+        "products. Uses Shopify's JSON endpoint first, HTML scraping as fallback."
+    )
+    if st.button(
+        "🔍 Scrape products for all collections",
+        help="Fetches real products from each collection URL via Shopify JSON. ~1-2s per collection.",
+    ):
+        from core.scraper import fetch_collection_data
+        progress = st.progress(0.0)
+        status_msg = st.empty()
+        scraped_count = 0
+        groups = st.session_state.collection_groups
+        for i, col in enumerate(groups):
+            col_url = col.collection_url
+            status_msg.text(f"Fetching {col.collection_name}…")
+            col_data = fetch_collection_data(col_url)
+            if col_data.source != "failed" and col_data.products:
+                col.products_to_link = [
+                    {"name": p.name, "url": p.url} for p in col_data.products[:8]
+                ]
+                col.scraped_products = [p.model_dump() for p in col_data.products]
+                col.existing_top_copy = col_data.existing_top_copy
+                col.existing_bottom_copy = col_data.existing_bottom_copy
+                scraped_count += 1
+            progress.progress((i + 1) / len(groups))
+        status_msg.text(f"Done — scraped products for {scraped_count}/{len(groups)} collections.")
+        progress.empty()
+        st.rerun()
+
+    st.markdown("---")
     st.success("Data input complete. Navigate to **Priority Scoring** in the sidebar to continue.")

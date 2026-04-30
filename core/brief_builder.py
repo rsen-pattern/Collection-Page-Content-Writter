@@ -47,14 +47,16 @@ class ContentBrief(BaseModel):
     brand_usps: list[str] = Field(default_factory=list)
     products_to_link: list[dict] = Field(default_factory=list)  # [{name, url}]
     related_collections: list[dict] = Field(default_factory=list)  # [{name, url}]
-    target_word_count: int = 100
+    target_word_count: int = 200  # kept for compat; mirrors target_bottom_word_count
+    target_bottom_word_count: int = 200  # bottom-copy target, scales with KD
     paa_questions: list[str] = Field(default_factory=list)
-    faq_count: int = 3
+    faq_count: int = 4
     voice_notes: str = ""
     brand_name: str = ""
     store_url: str = ""
     target_market: str = "UK"
-    existing_content: str = ""
+    existing_content: str = ""  # live page copy from scraper, used as reference for new content
+    prompt_overrides: dict = Field(default_factory=dict)
 
 
 def load_methodology_rules() -> dict:
@@ -64,24 +66,53 @@ def load_methodology_rules() -> dict:
         return json.load(f)
 
 
+def calculate_target_word_counts(
+    keyword_difficulty: Optional[float] = None,
+) -> tuple[int, int]:
+    """Calculate target word counts for top and bottom of page based on KD.
+
+    Top stays compact regardless of difficulty. Bottom scales: low-difficulty
+    collections get tight copy, high-difficulty competitive collections get
+    much longer depth (per Shopify SEO guides recommending up to ~1000 words).
+
+    Returns (top_target, bottom_target) — these are TARGETS for the model,
+    not absolute caps. Validator caps come from methodology_rules.json.
+    """
+    rules = load_methodology_rules()
+    top_cfg = rules["content_length"]["top_of_page_copy"]
+    top_min = top_cfg["sweet_spot_min_words"]
+    top_max = top_cfg["sweet_spot_max_words"]
+
+    if keyword_difficulty is None:
+        top_target = (top_min + top_max) // 2
+        bottom_target = 200
+        return top_target, bottom_target
+
+    if keyword_difficulty >= 50:
+        top_target = top_max
+    elif keyword_difficulty >= 30:
+        top_target = (top_min + top_max) // 2
+    else:
+        top_target = top_min + 5
+
+    if keyword_difficulty >= 60:
+        bottom_target = 800
+    elif keyword_difficulty >= 40:
+        bottom_target = 500
+    elif keyword_difficulty >= 20:
+        bottom_target = 250
+    else:
+        bottom_target = 125
+
+    return top_target, bottom_target
+
+
 def calculate_target_word_count(
     keyword_difficulty: Optional[float] = None,
 ) -> int:
-    """Calculate target word count based on keyword difficulty."""
-    rules = load_methodology_rules()
-    min_words = rules["content_length"]["description"]["sweet_spot_min"]
-    max_words = rules["content_length"]["description"]["sweet_spot_max"]
-
-    if keyword_difficulty is None:
-        return (min_words + max_words) // 2
-
-    # Higher difficulty → more content needed
-    if keyword_difficulty >= 50:
-        return max_words
-    elif keyword_difficulty >= 30:
-        return (min_words + max_words) // 2
-    else:
-        return min_words + 25  # ~275 words for low difficulty
+    """Calculate bottom-copy target word count. Kept for backward compatibility."""
+    _, bottom = calculate_target_word_counts(keyword_difficulty)
+    return bottom
 
 
 def find_related_collections(
@@ -126,6 +157,8 @@ def build_brief(
     paa_questions: list[str] = None,
     keyword_difficulty: Optional[float] = None,
     existing_content: str = "",
+    faq_count: int = 4,
+    prompt_overrides: dict = None,
 ) -> ContentBrief:
     """Build a content brief for a collection."""
     if products_to_link is None:
@@ -134,6 +167,8 @@ def build_brief(
         related_collections = []
     if paa_questions is None:
         paa_questions = []
+    if prompt_overrides is None:
+        prompt_overrides = {}
 
     raw_secondary = [
         kw.get("keyword", kw) if isinstance(kw, dict) else kw
@@ -142,25 +177,27 @@ def build_brief(
     deduped_secondary = _deduplicate_keywords(primary_keyword, raw_secondary)
     secondary_kw_list = deduped_secondary[:10]
 
-    target_word_count = calculate_target_word_count(keyword_difficulty)
+    _, bottom_target = calculate_target_word_counts(keyword_difficulty)
 
     return ContentBrief(
         collection_url=collection_url,
         collection_name=collection_name,
         primary_keyword=primary_keyword,
         primary_keyword_volume=primary_keyword_volume,
-        secondary_keywords=secondary_kw_list[:10],  # Cap at 10
+        secondary_keywords=secondary_kw_list[:10],
         brand_usps=brand_usps,
         products_to_link=products_to_link,
         related_collections=related_collections,
-        target_word_count=target_word_count,
+        target_word_count=bottom_target,
+        target_bottom_word_count=bottom_target,
         paa_questions=paa_questions[:5],
-        faq_count=3,
+        faq_count=faq_count,
         voice_notes=voice_notes,
         brand_name=brand_name,
         store_url=store_url,
         target_market=target_market,
         existing_content=existing_content,
+        prompt_overrides=prompt_overrides,
     )
 
 
@@ -187,6 +224,12 @@ def build_briefs_for_batch(
                 kw_difficulty = kw["keyword_difficulty"]
                 break
 
+        existing_content = "\n\n".join(filter(None, [
+            collection.get("existing_top_copy", ""),
+            collection.get("existing_bottom_copy", ""),
+            collection.get("existing_content", ""),
+        ]))
+
         brief = build_brief(
             collection_url=collection.get("collection_url", ""),
             collection_name=collection.get("collection_name", ""),
@@ -202,6 +245,8 @@ def build_briefs_for_batch(
             related_collections=related,
             paa_questions=collection.get("paa_questions", []),
             keyword_difficulty=kw_difficulty,
+            existing_content=existing_content,
+            faq_count=client_profile.get("faq_count", 4),
         )
         briefs.append(brief)
 

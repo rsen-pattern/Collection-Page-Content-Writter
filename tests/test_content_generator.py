@@ -9,9 +9,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.brief_builder import ContentBrief
 from core.content_generator import (
+    GeneratedContent,
     build_system_prompt,
     build_full_brief_prompt,
     build_description_prompt,
+    build_bottom_copy_prompt,
+    build_alt_text_prompt,
     build_title_prompt,
     build_faq_prompt,
     parse_full_brief_response,
@@ -129,3 +132,37 @@ A: Yes, all our pieces are nickel-free and hypoallergenic."""
 
     def test_parse_empty_faqs(self):
         assert parse_faqs("") == []
+
+
+class TestNewGenerators:
+    def test_generated_content_has_alt_text_field(self):
+        content = GeneratedContent(
+            collection_url="https://x.com/collections/y", collection_name="Y"
+        )
+        assert hasattr(content, "alt_text")
+        assert content.alt_text == ""
+
+    def test_build_bottom_copy_prompt_includes_target(self, sample_brief):
+        sample_brief.target_bottom_word_count = 800
+        prompt = build_bottom_copy_prompt(sample_brief)
+        assert "800" in prompt
+        assert "words" in prompt.lower()
+
+    def test_build_bottom_copy_prompt_heading_rule_present(self, sample_brief):
+        prompt = build_bottom_copy_prompt(sample_brief)
+        assert "H2" in prompt or "H3" in prompt
+
+    def test_build_alt_text_prompt_includes_product(self, sample_brief):
+        prompt = build_alt_text_prompt(sample_brief, {
+            "name": "Quencher 40oz",
+            "product_type": "Tumbler",
+            "image_alt": "",
+        })
+        assert "Quencher 40oz" in prompt
+        assert "5-12 words" in prompt
+        assert "Image of" in prompt  # negative example in the template
+
+    def test_full_brief_prompt_includes_target_bottom_words(self, sample_brief):
+        sample_brief.target_bottom_word_count = 500
+        prompt = build_full_brief_prompt(sample_brief)
+        assert "500" in prompt

@@ -26,9 +26,14 @@ GENERATE ALL OF THE FOLLOWING:
 2. COLLECTION TITLE (H1)
 - Concise, includes primary keyword, differs from SEO title, under 8 words
 
-3. COLLECTION DESCRIPTION ({target_word_count} words target)
+3. BOTTOM-OF-PAGE COPY (~{target_bottom_words} words target)
 
 Write the description following this internal structure — but DO NOT use these labels as headings. Use descriptive, keyword-relevant headings instead (e.g., "SPF50+ sunscreen for active days", "Shop by skin type", "Why choose [Brand] sunscreen").
+
+HEADING RULES:
+- For target word counts ≤ 250: use H3 (### Section Title) only. 2-3 sections.
+- For target word counts > 250: use H2 (## Major Section) for major sections + H3 (### Sub-section) for sub-points within them. 3-5 H2 sections, 1-2 H3 sub-points each.
+- NEVER use template labels as headings ("Hook", "BLUF", "Feature-to-Benefit", "Trust Section").
 
 Internal structure:
 a) Open by stating what this collection offers and who it's for. Include the primary keyword naturally. No definitions.
@@ -38,7 +43,7 @@ d) Guide shoppers to specific products ({min_product_links}-{max_product_links} 
 e) Close with a trust signal (shipping, returns, warranty) and a specific CTA related to the collection.
 
 Description rules:
-- {min_words}-{max_words} words, no paragraph over 3 sentences
+- ~{target_bottom_words} words target ({min_words}-{max_words} range acceptable), no paragraph over 3 sentences
 - Reference at least {min_usps} brand USPs
 - Naturally include secondary keywords
 - Every sentence must describe PRODUCTS or BRAND — not the shopping/browsing experience
@@ -49,7 +54,7 @@ Description rules:
 4. META DESCRIPTION
 - Under 155 characters, includes primary keyword, ends with clear CTA
 
-5. FAQs ({faq_count} questions)
+5. FAQs ({faq_count} questions, target 3-5)
 - Voice search optimized: write questions as users would speak them
 - Direct answers: start each answer with the key fact
 - STRICTLY 40-50 words per answer — count every word, cut ruthlessly

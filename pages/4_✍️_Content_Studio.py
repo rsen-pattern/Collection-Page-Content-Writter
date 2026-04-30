@@ -108,8 +108,8 @@ for i, col in enumerate(batch):
     st.markdown("---")
     st.markdown(f"## {col['collection_name']}")
 
-    tab_brief, tab_desc, tab_faq, tab_titles, tab_meta, tab_headtags = st.tabs(
-        ["Brief", "Description", "FAQs", "Titles", "Meta", "Headings & Tags"]
+    tab_brief, tab_desc, tab_faq, tab_titles, tab_meta, tab_headtags, tab_alt = st.tabs(
+        ["Brief", "Description", "FAQs", "Titles", "Meta", "Headings & Tags", "🖼️ Alt Text"]
     )
 
     with tab_brief:
@@ -297,6 +297,17 @@ for i, col in enumerate(batch):
             icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
             st.markdown(f"{icon} {vr.message}")
 
+        if updated_faqs:
+            from core.schema import build_faq_schema, schema_to_script_tag as _s2t
+            _faq_schema = build_faq_schema([
+                {"question": f["question"], "answer": f["answer"]}
+                for f in updated_faqs if f.get("question") and f.get("answer")
+            ])
+            if _faq_schema:
+                with st.expander("📋 FAQ JSON-LD schema (copy-paste into Shopify)", expanded=False):
+                    st.code(_s2t(_faq_schema), language="html")
+                    st.caption("Paste this in your collection page's HTML editor or theme custom-fields.")
+
         if st.button("Regenerate FAQs", key=f"regen_faqs_{i}"):
             with st.spinner("Regenerating..."):
                 try:
@@ -383,6 +394,52 @@ for i, col in enumerate(batch):
             st.code(tags_str, language=None)
         else:
             st.info("Generate a Full Brief Package to get suggested tags.")
+
+    with tab_alt:
+        brief_key_url = col["collection_url"]
+        col_entry = next(
+            (c for c in batch if c.get("collection_url") == brief_key_url), {}
+        )
+        scraped = col_entry.get("scraped_products", [])
+
+        if not scraped:
+            st.info(
+                "No scraped products for this collection. "
+                "Run **🔍 Scrape products for all collections** on the Data Input page first."
+            )
+        else:
+            st.markdown(f"**{len(scraped)} products** available.")
+            if st.button("Generate alt text for all products", key=f"gen_alt_{i}"):
+                from core.alt_text_generator import generate_alt_text_batch
+                with st.spinner(f"Generating alt text for {len(scraped)} products…"):
+                    alt_results = generate_alt_text_batch(
+                        api_key=st.session_state.bifrost_api_key,
+                        brief=brief,
+                        products=scraped,
+                        base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
+                    )
+                st.session_state[f"alt_results_{brief_key_url}"] = alt_results
+                st.success(f"Generated alt text for {len(alt_results)} products.")
+                st.rerun()
+
+            alt_results = st.session_state.get(f"alt_results_{brief_key_url}", [])
+            if alt_results:
+                for ai, ar in enumerate(alt_results):
+                    with st.container():
+                        ac_img, ac_txt = st.columns([1, 3])
+                        with ac_img:
+                            if ar.get("image"):
+                                st.image(ar["image"], width=100)
+                        with ac_txt:
+                            st.markdown(f"**{ar['name']}**")
+                            st.caption(f"Original: {ar['original_alt'] or '(none)'}")
+                            new_alt = st.text_input(
+                                "Suggested alt",
+                                value=ar["suggested_alt"],
+                                key=f"alt_{brief_key_url}_{ai}",
+                            )
+                            alt_results[ai]["suggested_alt"] = new_alt
+                st.session_state[f"alt_results_{brief_key_url}"] = alt_results
 
     # Approval
     st.markdown("---")
