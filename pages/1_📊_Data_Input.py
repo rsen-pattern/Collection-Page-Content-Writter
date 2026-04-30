@@ -1,4 +1,9 @@
-"""Step 1: Project Setup & Data Input."""
+"""Step 1: Project Setup & Data Input.
+
+When auto-detection or column auto-mapping is incomplete, an "AI diagnosis"
+fallback inspects the file with Haiku and proposes the correct header row +
+column mapping. The user can review and apply with one click.
+"""
 
 import streamlit as st
 import pandas as pd
@@ -20,6 +25,9 @@ if not cp.get("brand_name"):
 else:
     st.success(f"Active brand: **{cp['brand_name']}** · {len(cp.get('brand_usps', []))} USPs")
     st.page_link("pages/0_🏷️_Brand_Profile.py", label="Edit brand profile", icon="🏷️")
+
+# Profile is loaded by this point — gate already passed via st.stop() above.
+profile_valid = True
 
 st.markdown("---")
 
@@ -43,6 +51,30 @@ _FORMAT_LABELS = {
     "custom": "Custom Format",
 }
 
+
+def _detection_quality(source_format: str, raw_df: pd.DataFrame) -> str:
+    """Return 'good' if rule-based detection found a real format,
+    'weak' if it fell through to custom and the columns look unusable
+    (mostly Unnamed:, suggesting a header buried below blank rows or a
+    non-standard layout)."""
+    if source_format != "custom":
+        return "good"
+    cols = list(raw_df.columns)
+    unnamed_ratio = sum(
+        1 for c in cols if isinstance(c, str) and c.startswith("Unnamed:")
+    ) / max(len(cols), 1)
+    if unnamed_ratio > 0.5:
+        return "weak"
+    # Check whether any standard column candidate exists
+    from core.data_ingestion import load_format_mappings
+    mappings = load_format_mappings()
+    custom_map = mappings["formats"]["custom"]["column_mapping"]
+    cols_lower = {c.lower() for c in cols if isinstance(c, str)}
+    if any(any(cand.lower() in cols_lower for cand in cands) for cands in custom_map.values()):
+        return "good"
+    return "weak"
+
+
 if uploaded_file is not None:
     from core.data_ingestion import (
         detect_format,
@@ -58,12 +90,140 @@ if uploaded_file is not None:
         raw_df = read_upload(uploaded_file)
         source_format = detect_format(raw_df)
         format_label = _FORMAT_LABELS.get(source_format, source_format.upper())
+        quality = _detection_quality(source_format, raw_df)
 
         st.success(f"Detected format: **{format_label}** ({len(raw_df)} rows)")
 
         # Show raw preview
         with st.expander("Raw Data Preview"):
             st.dataframe(raw_df.head(20))
+
+        # ───────────────────────────────────────────────────────────────────
+        # AI-assisted diagnosis (offered when detection is weak)
+        # ───────────────────────────────────────────────────────────────────
+        if quality == "weak":
+            st.warning(
+                "Couldn't recognise this file's structure automatically. "
+                "Most columns have generic names like `Unnamed: 0`, which usually means "
+                "the header row is buried below blank rows or a title banner."
+            )
+            api_key = st.session_state.get("bifrost_api_key", "")
+
+            adc1, adc2 = st.columns([1, 4])
+            with adc1:
+                ai_clicked = st.button(
+                    "🤖 Ask AI to diagnose",
+                    type="primary",
+                    disabled=not api_key,
+                    help="Sends the first 15 rows to Haiku and asks it to identify the header row and column mapping.",
+                )
+            with adc2:
+                if not api_key:
+                    st.caption("Set the Bifrost API key in the sidebar to enable AI diagnosis.")
+                else:
+                    st.caption("Uses Haiku (fast, low-cost). Only the first 15 rows are sent.")
+
+            if ai_clicked:
+                from core.file_diagnoser import diagnose_file
+                with st.spinner("Inspecting file structure..."):
+                    diagnosis = diagnose_file(
+                        api_key=api_key,
+                        raw_df=raw_df,
+                        base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
+                    )
+                st.session_state["_ai_diagnosis"] = diagnosis
+                st.rerun()
+
+            diagnosis = st.session_state.get("_ai_diagnosis")
+            if diagnosis:
+                if diagnosis.get("error"):
+                    st.error(f"AI diagnosis failed: {diagnosis['error']}")
+                elif not diagnosis.get("mapping"):
+                    st.error(
+                        f"AI couldn't identify a usable structure. "
+                        f"Reason: {diagnosis.get('reasoning', 'no details')}"
+                    )
+                else:
+                    confidence = diagnosis.get("confidence", "low")
+                    badge = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(confidence, "")
+                    st.info(
+                        f"**AI diagnosis** {badge} confidence: {confidence}\n\n"
+                        f"_{diagnosis.get('reasoning', '')}_"
+                    )
+                    st.markdown("**Proposed column mapping:**")
+                    mapping_rows = [
+                        {"Source column": k, "Maps to": v}
+                        for k, v in diagnosis["mapping"].items()
+                    ]
+                    st.dataframe(pd.DataFrame(mapping_rows), use_container_width=True, hide_index=True)
+                    if diagnosis.get("header_row") is not None:
+                        st.caption(f"Header row identified: Row {diagnosis['header_row']}")
+
+                    apply_col1, apply_col2 = st.columns([1, 4])
+                    with apply_col1:
+                        apply_clicked = st.button(
+                            "✅ Apply AI mapping",
+                            type="primary",
+                            help="Re-read the file using the AI's suggested header row and column mapping.",
+                        )
+                    if apply_clicked:
+                        from core.file_diagnoser import (
+                            reread_with_header,
+                            apply_wide_mapping,
+                            apply_long_mapping,
+                        )
+                        try:
+                            df = reread_with_header(uploaded_file, diagnosis.get("header_row"))
+                        except Exception as e:
+                            st.error(f"Couldn't re-read file: {e}")
+                            df = None
+
+                        if df is not None:
+                            if diagnosis.get("format") == "wide":
+                                groups, skipped = apply_wide_mapping(df, diagnosis["mapping"])
+                                if groups:
+                                    st.session_state.normalized_data = pd.DataFrame()
+                                    st.session_state.source_format = "keyword_map"  # treat as wide
+                                    st.session_state.collection_groups = groups
+                                    st.session_state.skipped_collections = skipped
+                                    st.session_state.raw_data = raw_df
+                                    st.success(
+                                        f"Applied AI mapping. Loaded **{len(groups)} collections** "
+                                        f"({len(skipped)} skipped)."
+                                    )
+                                    st.session_state.pop("_ai_diagnosis", None)
+                                    st.rerun()
+                                else:
+                                    st.error(
+                                        "AI mapping produced no usable rows. "
+                                        "The URL column may be wrong — try editing the mapping or "
+                                        "manually entering URLs in the next step."
+                                    )
+                            else:
+                                normalized = apply_long_mapping(df, diagnosis["mapping"])
+                                if "collection_url" in normalized.columns:
+                                    mask = normalized["collection_url"].str.contains(
+                                        "/collections/", case=False, na=False
+                                    )
+                                    if mask.any():
+                                        normalized = normalized[mask].copy()
+                                groups = group_by_collection(normalized)
+                                st.session_state.normalized_data = normalized
+                                st.session_state.source_format = "custom"
+                                st.session_state.collection_groups = groups
+                                st.session_state.skipped_collections = []
+                                st.session_state.raw_data = raw_df
+                                st.success(
+                                    f"Applied AI mapping. Loaded **{len(groups)} collections** "
+                                    f"from {len(normalized)} keyword rows."
+                                )
+                                st.session_state.pop("_ai_diagnosis", None)
+                                st.rerun()
+
+            st.markdown("---")
+            st.caption(
+                "If you'd rather configure the columns manually, use the dropdowns below."
+            )
 
         if source_format == "keyword_map":
             # --- Keyword Mapping format: fully auto-handled, no dropdowns ---
