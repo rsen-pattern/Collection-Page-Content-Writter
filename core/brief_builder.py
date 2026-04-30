@@ -56,6 +56,7 @@ class ContentBrief(BaseModel):
     store_url: str = ""
     target_market: str = "UK"
     existing_content: str = ""  # live page copy from scraper, used as reference for new content
+    past_feedback: str = ""
     prompt_overrides: dict = Field(default_factory=dict)
 
 
@@ -158,6 +159,7 @@ def build_brief(
     keyword_difficulty: Optional[float] = None,
     existing_content: str = "",
     faq_count: int = 4,
+    past_feedback: str = "",
     prompt_overrides: dict = None,
 ) -> ContentBrief:
     """Build a content brief for a collection."""
@@ -197,6 +199,7 @@ def build_brief(
         store_url=store_url,
         target_market=target_market,
         existing_content=existing_content,
+        past_feedback=past_feedback,
         prompt_overrides=prompt_overrides,
     )
 
@@ -247,6 +250,7 @@ def build_briefs_for_batch(
             keyword_difficulty=kw_difficulty,
             existing_content=existing_content,
             faq_count=client_profile.get("faq_count", 4),
+            past_feedback=client_profile.get("past_feedback", ""),
         )
         briefs.append(brief)
 

@@ -116,11 +116,11 @@
         },
         {
           "id": "description_mentions_usps",
-          "label": "Mentions brand USPs",
+          "label": "Mentions brand USPs (advisory)",
           "type": "usp_match",
           "field": "description",
           "min_matches": 2,
-          "impact": "high",
+          "impact": "low",
           "effort": "medium"
         },
         {

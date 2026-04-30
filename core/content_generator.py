@@ -43,17 +43,24 @@ def _load_methodology_rules() -> dict:
 
 def build_system_prompt(brief: ContentBrief) -> str:
     """Build the system prompt from template and brief data."""
+    from core.brand_profile import build_brand_custom_context
+
     rules = _load_methodology_rules()
     template = _load_prompt("system_prompt.txt")
 
     cl = rules["content_length"]["description"]
     ci = rules["content_inclusion"]
 
+    profile_dict = {
+        "past_feedback": brief.past_feedback,
+        "prompt_overrides": brief.prompt_overrides,
+    }
+    custom_context = build_brand_custom_context(profile_dict)
+
     return template.format(
         min_words=cl["sweet_spot_min"],
         max_words=cl["sweet_spot_max"],
         hard_ceiling=cl["hard_ceiling"],
-        min_usps=ci["description_min_usps"],
         min_product_links=ci["description_product_links_min"],
         max_product_links=ci["description_product_links_max"],
         min_collection_links=ci["description_collection_links_min"],
@@ -63,6 +70,7 @@ def build_system_prompt(brief: ContentBrief) -> str:
         usps="\n".join(f"- {usp}" for usp in brief.brand_usps),
         voice_notes=brief.voice_notes or "No specific voice notes provided.",
         target_market=brief.target_market,
+        brand_custom_context=custom_context,
     )
 
 

@@ -34,8 +34,8 @@ RULES:
 - Include specific product details (ingredients, SPF level, format, materials) that make answers unique to {brand_name}
 
 5. BRAND SPECIFICITY:
-- Each answer must reference something specific to {brand_name}'s actual products
-- Generic category advice that could apply to any brand fails the test
+- Answers should be specific to the actual products being sold — concrete details (materials, sizes, ingredients, features) rather than generic category advice.
+- Reference {brand_name}'s products by name when it adds clarity. Don't shoehorn the brand name into every answer.
 
 {batch_exclusion_note}
 

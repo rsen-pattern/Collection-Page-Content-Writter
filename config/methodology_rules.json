@@ -36,6 +36,9 @@
   },
   "content_inclusion": {
     "description_min_usps": 2,
+    "top_copy_suggested_usps": 1,
+    "bottom_copy_suggested_usps": 2,
+    "bottom_copy_suggested_secondary_keywords": 1,
     "description_product_links_min": 2,
     "description_product_links_max": 4,
     "description_collection_links_min": 1,

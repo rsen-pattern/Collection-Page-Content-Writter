@@ -21,11 +21,13 @@ HEADING RULES:
 - Bad: "## Section 1", "### Hook"
 
 REQUIRED CONTENT ELEMENTS:
-- Reference at least {min_usps} of these brand USPs: {usps}
 - Include {min_product_links}-{max_product_links} internal product links as markdown links using exact-match descriptive anchor text
 - Include {min_collection_links}-{max_collection_links} related collection links as markdown links
-- Naturally include at least 1 secondary keyword
 - NEVER use (#) placeholder links — use real URLs from the provided list, or construct realistic relative paths from product/collection names
+
+OPTIONAL CONTENT ELEMENTS (use at your discretion):
+- Brand USPs (available: {usps}) — reference where they genuinely fit the section's topic. A "vacuum insulation" USP belongs in a tech-detail section but not in a sizing section. Don't force USPs into every section.
+- Secondary keywords — weave in where they fit. Don't stuff.
 
 INTERNAL STRUCTURE (follow this flow, but DO NOT use these labels as headings):
 

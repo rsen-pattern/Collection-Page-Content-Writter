@@ -250,6 +250,7 @@ if st.button(
         existing_content_text.strip(),
     ]))
 
+    cp = st.session_state.get("client_profile", {})
     brief = build_brief(
         collection_url=collection_url,
         collection_name=collection_name,
@@ -266,6 +267,7 @@ if st.button(
         paa_questions=paa_questions,
         keyword_difficulty=float(keyword_difficulty),
         existing_content=combined_existing,
+        past_feedback=cp.get("past_feedback", ""),
     )
 
     with st.spinner("Generating content..."):
