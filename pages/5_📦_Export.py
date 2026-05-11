@@ -75,7 +75,7 @@ if source_format == "keyword_map":
         "Exports in the same format as your original keyword mapping document — "
         "same column structure with optimized content columns appended on the right."
     )
-    if st.button("Generate Round-Trip Export", type="primary"):
+    if st.button("Generate Round-Trip Export", type="primary", key="export_roundtrip_btn"):
         buffer = export_keyword_map_roundtrip(export_collections, client.get("brand_name", ""))
         st.download_button(
             label="Download Round-Trip Keyword Map",
@@ -90,7 +90,7 @@ ec1, ec2, ec3 = st.columns(3)
 with ec1:
     st.markdown("### Keyword Map (XLSX)")
     st.markdown("Completed keyword map matching the toolkit schema with optimized columns filled in.")
-    if st.button("Generate Keyword Map", type="primary"):
+    if st.button("Generate Keyword Map"):
         buffer = export_keyword_map(export_collections, client.get("brand_name", ""))
         st.download_button(
             label="Download Keyword Map",
@@ -102,7 +102,7 @@ with ec1:
 with ec2:
     st.markdown("### Content Delivery (XLSX)")
     st.markdown("Per-collection sheets with all approved content, formatted for client handoff.")
-    if st.button("Generate Content Delivery", type="primary"):
+    if st.button("Generate Content Delivery"):
         buffer = export_content_delivery(export_collections, client.get("brand_name", ""))
         st.download_button(
             label="Download Content Delivery",
@@ -114,7 +114,12 @@ with ec2:
 with ec3:
     st.markdown("### Shopify Bulk CSV")
     st.markdown("Matrixify-compatible CSV with handle, title, body HTML, meta title, meta description.")
-    if st.button("Generate Shopify CSV", type="primary"):
+    # Primary when source wasn't keyword_map; secondary otherwise (Round-Trip becomes the primary).
+    if st.button(
+        "Generate Shopify CSV",
+        type="primary" if source_format != "keyword_map" else "secondary",
+        key="export_shopify_btn",
+    ):
         buffer = export_shopify_csv(export_collections)
         st.download_button(
             label="Download Shopify CSV",

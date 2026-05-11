@@ -398,7 +398,7 @@ for i, col in enumerate(batch):
                 key=f"audit_blog_{i}",
             )
 
-        if st.button("Run Audit", key=f"run_audit_{i}", type="primary"):
+        if st.button("Run Audit", key=f"run_audit_{i}"):
             audit_data = CollectionAuditData(
                 collection_url=col["collection_url"],
                 collection_name=col["collection_name"],
@@ -438,11 +438,11 @@ for i, col in enumerate(batch):
 
             for check in result.checks:
                 if check.result == "pass":
-                    st.markdown(f"✅ {check.label} — {check.details}")
+                    st.markdown(f"✅ **Pass** · {check.label} — {check.details}")
                 elif check.result == "fail":
-                    st.markdown(f"❌ {check.label} — {check.details}")
+                    st.markdown(f"❌ **Fail** · {check.label} — {check.details}")
                 else:
-                    st.markdown(f"⚠️ {check.label} — {check.details}")
+                    st.markdown(f"⚠️ **Review** · {check.label} — {check.details}")
 
             priority_actions = get_priority_actions(result)
             if priority_actions:

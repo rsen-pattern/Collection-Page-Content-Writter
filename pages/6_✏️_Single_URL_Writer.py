@@ -424,7 +424,8 @@ if content:
 
             for vr in v.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-                st.markdown(f"{icon} {vr.message}")
+                label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+                st.markdown(f"{icon} **{label}** · {vr.message}")
 
             if st.button("Humanize Description", key="humanize_single_desc"):
                 from core.content_generator import humanize_content as _humanize
@@ -463,7 +464,8 @@ if content:
                 )
                 for vr in v.results:
                     icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-                    st.markdown(f"{icon} {vr.message}")
+                    label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+                    st.markdown(f"{icon} **{label}** · {vr.message}")
 
         with tc2:
             h1 = st.text_input(
@@ -481,7 +483,8 @@ if content:
                 )
                 for vr in v.results:
                     icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-                    st.markdown(f"{icon} {vr.message}")
+                    label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+                    st.markdown(f"{icon} **{label}** · {vr.message}")
 
     # --- FAQs ---
     with tab_faq:
@@ -498,7 +501,8 @@ if content:
             v = validate_faqs(updated_faqs, brand_name=content.get("brand_name", ""))
             for vr in v.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-                st.markdown(f"{icon} {vr.message}")
+                label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+                st.markdown(f"{icon} **{label}** · {vr.message}")
 
             from core.schema import build_faq_schema, schema_to_script_tag as _s2t
             _faq_schema = build_faq_schema([
@@ -528,7 +532,8 @@ if content:
             v = validate_meta_description(meta, content.get("primary_keyword", ""))
             for vr in v.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-                st.markdown(f"{icon} {vr.message}")
+                label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+                st.markdown(f"{icon} **{label}** · {vr.message}")
 
     # --- Headings & Tags ---
     with tab_headtags:

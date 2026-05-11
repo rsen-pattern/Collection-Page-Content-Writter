@@ -70,6 +70,24 @@ def load_format_mappings() -> dict:
         return json.load(f)
 
 
+_TEMPLATE_FILES = {
+    "gsc": "sample_gsc.csv",
+    "ahrefs": "sample_ahrefs.csv",
+    "keyword_map": "sample_keyword_map.csv",
+}
+
+
+def load_sample_template(format_key: str) -> bytes:
+    """Return the bytes of a packaged sample CSV template, or empty bytes if unknown."""
+    filename = _TEMPLATE_FILES.get(format_key)
+    if not filename:
+        return b""
+    path = Path(__file__).parent.parent / "static" / "templates" / filename
+    if not path.exists():
+        return b""
+    return path.read_bytes()
+
+
 def detect_format(df: pd.DataFrame) -> str:
     """Auto-detect the source format by checking column headers."""
     mappings = load_format_mappings()

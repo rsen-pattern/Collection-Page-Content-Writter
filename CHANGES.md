@@ -1,5 +1,65 @@
 # Changes
 
+## Update — UI/UX polish from heuristic audit
+
+Eleven small UX fixes landed together. None change behaviour or data
+models — all additive at the display layer. Help text and labels written
+in en-GB to match the methodology.
+
+- **Tooltips on every Priority Scoring factor** — each of the six score
+  selectboxes (Traffic, Striking Distance, Revenue, Nav Link, Optimisation,
+  Competitive Gap) now carries a `help=` explaining what it measures and
+  how 1/2/3 are determined. The mode radio gained richer help covering
+  Test Run / Standard Batch / Full Run.
+- **Defaulted-data warnings inline with collections** — under each manual
+  override row, a single-line caption explains which factors fell back to
+  defaults because rank, difficulty, or crawl data was missing.
+- **Sample template downloads on Data Input** — three CSV templates
+  (GSC, Ahrefs, Keyword Map) shipped under `static/templates/` and
+  surfaced as download buttons below the file uploader. New
+  `core.data_ingestion.load_sample_template(format_key)` helper.
+- **Primary action hierarchy cleanup** — at most one primary button per
+  visible group: Content Studio (Approve and Copy-All demoted),
+  Audit (per-row Run Audit demoted), Export (only Round-Trip OR Shopify
+  CSV is primary depending on `source_format`).
+- **Loading spinner on Process Data** — both keyword-map and
+  standard-format Process Data buttons now wrap the work in
+  `st.spinner` so the user sees activity.
+- **Empty state messaging on Data Input** — when no file is uploaded, a
+  bordered container with format-specific export instructions surfaces
+  instead of empty space.
+- **Header weight fixes** — verified all `st.markdown("## …")` calls
+  represent top-level page sections rather than sub-sections. Updated
+  "Optimization" → "Optimisation" for en-GB consistency.
+- **Status icons paired with text labels (a11y)** — audit checks and
+  validation results now render as `✅ **Pass**`, `❌ **Fail/Error**`,
+  `⚠️ **Review**` so colourblind users and screen readers get the same
+  signal as sighted users. 10 validation-rendering sites updated in
+  Content Studio + Single URL Writer.
+- **Content Studio brief-tab state summary** — when content already
+  exists for a collection, the Brief tab shows a one-line summary
+  (word count, FAQ count, approval state) before the form so the user
+  doesn't have to click around to see status.
+- **Help & docs block in sidebar** — `app.py` sidebar gained a Help
+  section with links to README, methodology, and issues, plus a
+  version caption.
+- **Pre-flight summary before bulk generation** — Content Studio's
+  "Generate All" gates on a confirmation step when the batch exceeds 10
+  collections. Surfaces model, humaniser multiplier, ETA, and the
+  already-generated skip count (which respects the existing
+  `force_regenerate` toggle).
+
+**Files touched:** `app.py`,
+`pages/1_📊_Data_Input.py`, `pages/2_🎯_Priority_Scoring.py`,
+`pages/3_🔍_Audit.py`, `pages/4_✍️_Content_Studio.py`,
+`pages/5_📦_Export.py`, `pages/6_✏️_Single_URL_Writer.py`,
+`core/data_ingestion.py`,
+`static/templates/sample_gsc.csv` (new),
+`static/templates/sample_ahrefs.csv` (new),
+`static/templates/sample_keyword_map.csv` (new).
+
+---
+
 ## Fix — `CollectionGroup` Pydantic strict-mode error
 
 The Shopify scraper handler on `pages/1_📊_Data_Input.py` assigns

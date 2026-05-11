@@ -19,6 +19,56 @@ from core.sf_parser import derive_optimization_score, derive_nav_link_signal
 source_format = st.session_state.get("source_format", "")
 volume_only = source_format == "keyword_map"
 
+HELP_TEXT = {
+    "organic_traffic": (
+        "Current organic clicks or estimated traffic to this collection.\n\n"
+        "3 = 100+ clicks/month (or volume × 3% ≥ 100)\n"
+        "2 = 20-99 clicks/month\n"
+        "1 = under 20 clicks/month"
+    ),
+    "striking_distance": (
+        "Keywords ranking just outside page 1 — small lifts win big traffic gains.\n\n"
+        "3 = any keyword in positions 8-17\n"
+        "2 = any keyword in positions 18-25\n"
+        "1 = no keyword in striking distance, or no rank data"
+    ),
+    "revenue_potential": (
+        "Inferred from search volume when product count is unknown.\n\n"
+        "3 = total volume ≥ 1,000/month\n"
+        "2 = total volume 200-999/month\n"
+        "1 = total volume under 200/month"
+    ),
+    "homepage_nav_link": (
+        "Whether this collection is linked from the homepage or main nav. "
+        "Currently a manual signal — not auto-detected.\n\n"
+        "3 = linked from homepage AND nav (high authority)\n"
+        "2 = linked from one of the two\n"
+        "1 = not linked from either"
+    ),
+    "current_optimization": (
+        "How well-optimised the page currently is. Inverse signal — "
+        "lower current optimisation means more upside.\n\n"
+        "3 = nothing optimised (highest opportunity)\n"
+        "2 = partially optimised\n"
+        "1 = already well-optimised"
+    ),
+    "competitive_gap": (
+        "Combines keyword difficulty against current rank.\n\n"
+        "3 = low difficulty AND poor rank (big opportunity)\n"
+        "2 = medium difficulty OR partial gap\n"
+        "1 = high difficulty or already ranking well, or no data"
+    ),
+}
+
+MODE_HELP = (
+    "**Test Run** — validate prompts and brand voice on 1–2 collections before committing time. "
+    "Use this for a new brand or after major prompt changes.\n\n"
+    "**Standard Batch** — focused review-as-you-go session of 3–5 collections. "
+    "Best for the day-to-day review workflow.\n\n"
+    "**Full Run** — generate every selected collection sequentially. Use when prompts are stable "
+    "and you trust the output enough to review in bulk afterwards."
+)
+
 # --- Limited data banner for keyword_map format ---
 if volume_only:
     st.info(
@@ -36,7 +86,7 @@ if volume_only:
 # --- 2.1 Auto-Scoring ---
 st.markdown("## Collection Scoring")
 
-if not st.session_state.get("scored_collections") or st.button("Re-score Collections"):
+if not st.session_state.get("scored_collections") or st.button("Re-score Collections", help="Re-run the scoring engine over all collections. Useful after editing keyword data or applying new crawl data."):
     scored = score_all_collections(st.session_state.collection_groups, volume_only=volume_only)
 
     # ── Apply SF-derived scores where crawl data is available ────────────────
@@ -122,36 +172,42 @@ with st.expander("Adjust individual factor scores", expanded=volume_only):
                 "Traffic", [1, 2, 3],
                 index=sc.scores.organic_traffic - 1,
                 key=f"ot_{i}",
+                help=HELP_TEXT["organic_traffic"],
             )
         with oc2:
             striking = st.selectbox(
                 striking_label, [1, 2, 3],
                 index=sc.scores.striking_distance - 1,
                 key=f"sd_{i}",
+                help=HELP_TEXT["striking_distance"],
             )
         with oc3:
             revenue = st.selectbox(
                 "Revenue", [1, 2, 3],
                 index=sc.scores.revenue_potential - 1,
                 key=f"rp_{i}",
+                help=HELP_TEXT["revenue_potential"],
             )
         with oc4:
             nav_link = st.selectbox(
                 nav_label, [1, 2, 3],
                 index=sc.scores.homepage_nav_link - 1,
                 key=f"nl_{i}",
+                help=HELP_TEXT["homepage_nav_link"],
             )
         with oc5:
             optimization = st.selectbox(
-                "Optimization", [1, 2, 3],
+                "Optimisation", [1, 2, 3],
                 index=sc.scores.current_optimization - 1,
                 key=f"co_{i}",
+                help=HELP_TEXT["current_optimization"],
             )
         with oc6:
             competitive = st.selectbox(
                 gap_label, [1, 2, 3],
                 index=sc.scores.competitive_gap - 1,
                 key=f"cg_{i}",
+                help=HELP_TEXT["competitive_gap"],
             )
 
         sc.scores.organic_traffic = traffic
@@ -161,6 +217,16 @@ with st.expander("Adjust individual factor scores", expanded=volume_only):
         sc.scores.current_optimization = optimization
         sc.scores.competitive_gap = competitive
         sc.total_score = sc.scores.total
+
+        missing_signals = []
+        if not sc.has_rank_data:
+            missing_signals.append("rank data (Striking Distance, Competitive Gap defaulted)")
+        if not sc.has_difficulty_data:
+            missing_signals.append("keyword difficulty (Competitive Gap defaulted)")
+        if not sc.has_optimization_data:
+            missing_signals.append("crawl data (Current Optimisation defaulted to 'unoptimised')")
+        if missing_signals:
+            st.caption(f"⚠️ Defaulted: {'; '.join(missing_signals)}")
 
     # Re-sort after overrides
     st.session_state.scored_collections.sort(
@@ -176,11 +242,7 @@ mode = st.radio(
     "Select a run mode",
     ["🧪 Test Run (1–2 collections)", "📋 Standard Batch (3–5)", "🚀 Full Run (all or custom)"],
     horizontal=True,
-    help=(
-        "Test Run: validate prompts and brand voice on 1-2 collections first. "
-        "Standard Batch: focused review-as-you-go session. "
-        "Full Run: generate all collections sequentially in Step 4."
-    ),
+    help=MODE_HELP,
 )
 
 # Select All / Clear All for Full Run mode
