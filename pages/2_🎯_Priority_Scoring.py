@@ -144,7 +144,7 @@ for sc in scored:
 df = pd.DataFrame(table_data)
 st.dataframe(
     df,
-    use_container_width=True,
+    width="stretch",
     hide_index=True,
     column_config={
         "Total Score": st.column_config.ProgressColumn(
@@ -345,7 +345,7 @@ opportunities = identify_sub_collection_opportunities(
 if opportunities:
     st.markdown(f"**{len(opportunities)} potential sub-collection keywords** identified:")
     opp_df = pd.DataFrame(opportunities)
-    st.dataframe(opp_df, use_container_width=True, hide_index=True)
+    st.dataframe(opp_df, width="stretch", hide_index=True)
 else:
     st.info(
         "No sub-collection opportunities detected with significant volume. "

@@ -2,25 +2,18 @@
 
 import io
 import json
-import re
-import unicodedata
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 from pydantic import BaseModel, Field
 
-
-def clean_keyword(text: str) -> str:
-    """Strip unicode format characters and normalise whitespace.
-
-    Removes zero-width spaces (U+200B), BOM (U+FEFF), soft hyphens,
-    and all other characters in unicode category 'Cf'.
-    """
-    if not text:
-        return text
-    cleaned = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
-    return " ".join(cleaned.split())
+# Re-exported for backward compatibility. Canonical home is core.text_utils.
+from core.text_utils import (
+    clean_keyword,  # noqa: F401
+    extract_collection_handle,  # noqa: F401
+    extract_collection_name as _extract_collection_name_canonical,
+)
 
 
 class KeywordRecord(BaseModel):
@@ -125,13 +118,12 @@ def _find_column(df: pd.DataFrame, candidates: list[str]) -> Optional[str]:
 
 
 def _extract_collection_name(url: str) -> str:
-    """Extract a human-readable collection name from a URL."""
-    match = re.search(r"/collections/([^/?#]+)", url)
-    if match:
-        handle = match.group(1)
-        return handle.replace("-", " ").replace("_", " ").title()
-    parts = url.rstrip("/").split("/")
-    return parts[-1].replace("-", " ").replace("_", " ").title() if parts else url
+    """Extract a human-readable collection name from a URL.
+
+    Thin wrapper kept for backward compatibility; delegates to the canonical
+    implementation in core.text_utils.
+    """
+    return _extract_collection_name_canonical(url)
 
 
 def normalize_dataframe(df: pd.DataFrame, source_format: str) -> pd.DataFrame:

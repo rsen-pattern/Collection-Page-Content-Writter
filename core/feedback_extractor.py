@@ -44,8 +44,8 @@ def extract_banned_phrases(
     if not feedback.strip():
         return []
 
-    if not base_url.rstrip("/").endswith("/v1"):
-        base_url = base_url.rstrip("/") + "/v1"
+    from core.text_utils import ensure_v1_path
+    base_url = ensure_v1_path(base_url)
 
     client = OpenAI(api_key=api_key, base_url=base_url)
 

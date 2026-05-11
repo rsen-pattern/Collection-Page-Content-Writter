@@ -512,9 +512,9 @@ def humanize_content(
         Tuple of (humanized_text, model_used)
     """
     from openai import OpenAI
+    from core.text_utils import ensure_v1_path
 
-    if not base_url.rstrip("/").endswith("/v1"):
-        base_url = base_url.rstrip("/") + "/v1"
+    base_url = ensure_v1_path(base_url)
 
     client = OpenAI(api_key=api_key, base_url=base_url)
 
@@ -574,11 +574,11 @@ def generate_content(
         base_url: Bifrost API base URL
     """
     from openai import OpenAI
+    from core.text_utils import ensure_v1_path
 
-    # OpenAI SDK appends /chat/completions to base_url.
-    # Bifrost expects /v1/chat/completions, so ensure base_url ends with /v1
-    if not base_url.rstrip("/").endswith("/v1"):
-        base_url = base_url.rstrip("/") + "/v1"
+    # OpenAI SDK appends /chat/completions to base_url; Bifrost expects
+    # /v1/chat/completions, so we ensure /v1 is the last path segment.
+    base_url = ensure_v1_path(base_url)
 
     client = OpenAI(api_key=api_key, base_url=base_url)
     system_prompt = build_system_prompt(brief)

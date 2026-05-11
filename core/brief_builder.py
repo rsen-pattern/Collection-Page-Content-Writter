@@ -1,35 +1,64 @@
 """Content brief assembly for collection pages."""
 
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from core.data_ingestion import clean_keyword
+from core.text_utils import clean_keyword
 
 
-_PLURAL_SUFFIXES = ("caps", "cap", "hats", "hat", "s")
+_PUNCT_RE = re.compile(r"[^\w\s]")
+
+
+def _normalise_for_dedup(kw: str) -> str:
+    """Normalise a keyword for duplicate detection.
+
+    Lowercases, cleans unicode, strips punctuation, then applies basic
+    English plural-to-singular morphology:
+
+    - ``-ies`` → ``-y``    (categories → category)
+    - ``-es`` (>3 chars)   → strip ``-es``    (boxes → box)
+    - ``-s`` (>3 chars)    → strip ``-s``     (shirts → shirt)
+
+    Not strict English morphology — designed to catch common ecommerce
+    keyword pairs like singular/plural product names. Words ≤ 3 chars are
+    left untouched so we don't mangle stems like "gas" or "bus".
+    """
+    cleaned = clean_keyword(kw).lower()
+    cleaned = _PUNCT_RE.sub(" ", cleaned)
+    parts = []
+    for word in cleaned.split():
+        if len(word) > 3 and word.endswith("ies"):
+            parts.append(word[:-3] + "y")
+        elif len(word) > 4 and word.endswith("sses"):
+            # boss/bosses, dress/dresses: drop the plural "es" but keep "ss".
+            parts.append(word[:-2])
+        elif len(word) > 3 and word.endswith("ss"):
+            # dress, glass, brass — never strip a final "ss".
+            parts.append(word)
+        elif len(word) > 3 and word.endswith("es"):
+            parts.append(word[:-2])
+        elif len(word) > 3 and word.endswith("s"):
+            parts.append(word[:-1])
+        else:
+            parts.append(word)
+    return " ".join(parts).strip()
 
 
 def _deduplicate_keywords(primary: str, secondary: list[str]) -> list[str]:
     """Remove secondary keywords that are near-duplicates of primary or each other.
 
-    Normalises by cleaning unicode, lowercasing, and stripping common cap/hat
-    plural suffixes.  Primary is always kept.  Ordering of survivors is preserved.
+    Normalisation uses :func:`_normalise_for_dedup` so plural/singular pairs
+    collapse across any vertical (not just cap/hat). Primary is always kept;
+    survivors keep their original ordering.
     """
-    def _norm(kw: str) -> str:
-        kw = clean_keyword(kw).lower()
-        for suffix in _PLURAL_SUFFIXES:
-            if kw.endswith(" " + suffix):
-                kw = kw[: -(len(suffix) + 1)]
-                break
-        return kw.strip()
-
-    seen: set[str] = {_norm(primary)}
+    seen: set[str] = {_normalise_for_dedup(primary)}
     deduped: list[str] = []
     for kw in secondary:
-        norm = _norm(kw)
+        norm = _normalise_for_dedup(kw)
         if norm and norm not in seen:
             seen.add(norm)
             deduped.append(kw)

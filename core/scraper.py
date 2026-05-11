@@ -14,7 +14,6 @@ Two separate scraping concerns live in this module:
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 from urllib.parse import urljoin, urlparse
@@ -22,6 +21,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field as PydanticField
+
+from core.text_utils import clean_keyword, extract_collection_handle
 
 
 USER_AGENT = "Mozilla/5.0 (compatible; CollectionSEOEngine/1.0)"
@@ -81,13 +82,13 @@ def _parse_html_to_scraped_data(url: str, html: str) -> ScrapedPageData:
     soup = BeautifulSoup(html, "html.parser")
 
     title_tag = soup.find("title")
-    seo_title = title_tag.text.strip() if title_tag else ""
+    seo_title = clean_keyword(title_tag.text.strip()) if title_tag else ""
 
     h1_tag = soup.find("h1")
-    h1 = " ".join(h1_tag.get_text(separator=" ", strip=True).split()) if h1_tag else ""
+    h1 = clean_keyword(h1_tag.get_text(separator=" ", strip=True)) if h1_tag else ""
 
     meta_tag = soup.find("meta", attrs={"name": "description"})
-    meta_description = meta_tag.get("content", "").strip() if meta_tag else ""
+    meta_description = clean_keyword(meta_tag.get("content", "")) if meta_tag else ""
 
     description = ""
     for selector in DESCRIPTION_SELECTORS:
@@ -95,7 +96,7 @@ def _parse_html_to_scraped_data(url: str, html: str) -> ScrapedPageData:
         if el:
             text = el.get_text(separator=" ", strip=True)
             if len(text) > 20:
-                description = text
+                description = clean_keyword(text)
                 break
 
     return ScrapedPageData(
@@ -323,8 +324,8 @@ def _shopify_get(url: str, *, accept_json: bool = False) -> Optional[requests.Re
 
 
 def _shopify_extract_handle(url: str) -> str:
-    m = re.search(r"/collections/([^/?#]+)", url)
-    return m.group(1) if m else ""
+    """Kept for backward compatibility; delegates to core.text_utils."""
+    return extract_collection_handle(url)
 
 
 def _shopify_origin(url: str) -> str:
@@ -355,16 +356,17 @@ def _products_from_json(raw_products: list[dict], origin: str) -> list[ScrapedPr
         first_variant = variants[0] if variants else {}
         images = p.get("images") or []
         first_image = images[0] if images else {}
+        image_alt_raw = first_image.get("alt", "") if isinstance(first_image, dict) else ""
         products.append(ScrapedProduct(
-            name=p.get("title", ""),
+            name=clean_keyword(p.get("title", "")),
             url=absolute_url,
             handle=handle,
             image=first_image.get("src", "") if isinstance(first_image, dict) else "",
-            image_alt=first_image.get("alt", "") if isinstance(first_image, dict) else "",
+            image_alt=clean_keyword(image_alt_raw or ""),
             price=str(first_variant.get("price", "")),
             currency="",
-            product_type=p.get("product_type", ""),
-            vendor=p.get("vendor", ""),
+            product_type=clean_keyword(p.get("product_type", "")),
+            vendor=clean_keyword(p.get("vendor", "")),
         ))
     return products
 
@@ -397,7 +399,7 @@ def _extract_existing_copy(soup: BeautifulSoup) -> tuple[str, str]:
             if el:
                 text = el.get_text("\n", strip=True)
                 if len(text) > 20:
-                    return text
+                    return clean_keyword(text)
         return ""
 
     return first_text(_EXISTING_TOP_SELECTORS), first_text(_EXISTING_BOTTOM_SELECTORS)
@@ -442,10 +444,10 @@ def _products_from_html(soup: BeautifulSoup, origin: str) -> list[ScrapedProduct
 
             handle = href.rstrip("/").split("/")[-1].split("?")[0]
             products.append(ScrapedProduct(
-                name=name,
+                name=clean_keyword(name),
                 url=absolute_url,
                 image=image,
-                image_alt=image_alt,
+                image_alt=clean_keyword(image_alt),
                 handle=handle,
             ))
         if products:
@@ -476,9 +478,9 @@ def fetch_collection_data(url: str) -> CollectionPageData:
         title_tag = soup.find("title")
         meta_tag = soup.find("meta", attrs={"name": "description"})
         h1_tag = soup.find("h1")
-        data.h1 = h1_tag.get_text(strip=True) if h1_tag else ""
-        data.meta_title = title_tag.get_text(strip=True) if title_tag else ""
-        data.meta_description = meta_tag.get("content", "").strip() if meta_tag else ""
+        data.h1 = clean_keyword(h1_tag.get_text(strip=True)) if h1_tag else ""
+        data.meta_title = clean_keyword(title_tag.get_text(strip=True)) if title_tag else ""
+        data.meta_description = clean_keyword(meta_tag.get("content", "")) if meta_tag else ""
         top, bottom = _extract_existing_copy(soup)
         data.existing_top_copy = top
         data.existing_bottom_copy = bottom

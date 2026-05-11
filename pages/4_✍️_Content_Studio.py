@@ -3,6 +3,8 @@
 import re
 import streamlit as st
 
+from core.text_utils import clean_keyword
+
 
 st.title("Step 4: Content Studio")
 
@@ -292,7 +294,7 @@ for i, col in enumerate(batch):
             st.markdown(f"**FAQ {j+1}**")
             q = st.text_input("Question", value=faq.get("question", ""), key=f"faq_q_{i}_{j}")
             a = st.text_area("Answer", value=faq.get("answer", ""), key=f"faq_a_{i}_{j}", height=80)
-            updated_faqs.append({"question": q, "answer": a})
+            updated_faqs.append({"question": clean_keyword(q), "answer": clean_keyword(a)})
         content["faqs"] = updated_faqs
 
         faq_validation = validate_faqs(
@@ -383,7 +385,7 @@ for i, col in enumerate(batch):
                     value=heading,
                     key=f"heading_{i}_{idx}",
                 )
-                updated_headings.append(h_val)
+                updated_headings.append(clean_keyword(h_val))
             content["suggested_headings"] = updated_headings
 
             st.markdown("**Copy-ready heading structure:**")
@@ -402,7 +404,9 @@ for i, col in enumerate(batch):
                 key=f"tags_{i}",
                 height=80,
             )
-            content["suggested_tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
+            content["suggested_tags"] = [
+                clean_keyword(t.strip()) for t in tags_str.split(",") if t.strip()
+            ]
 
             st.markdown("**Shopify tag format:**")
             st.code(tags_str, language=None)

@@ -8,6 +8,7 @@ from typing import Optional
 import pandas as pd
 
 from core.schema import build_faq_schema, build_itemlist_schema, schema_to_script_tag
+from core.text_utils import extract_collection_handle
 
 
 def _markdown_to_html(text: str) -> str:
@@ -180,7 +181,7 @@ def export_shopify_csv(
         body_html = _build_shopify_body_html(content_with_meta)
 
         url = col.get("collection_url", "")
-        handle = url.rstrip("/").split("/")[-1] if "/collections/" in url else ""
+        handle = extract_collection_handle(url)
 
         rows.append({
             "Handle": handle,

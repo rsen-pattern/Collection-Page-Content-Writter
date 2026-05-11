@@ -13,6 +13,7 @@ from core.sf_parser import (
     derive_audit_flags,
     parse_screaming_frog_csv,
 )
+from core.text_utils import extract_collection_handle
 
 
 st.title("Step 3: Automated Audit")
@@ -238,7 +239,7 @@ if run_all_audits_clicked:
             description=description,
             meta_description=meta_desc,
             brand_usps=st.session_state.client_profile.get("brand_usps", []),
-            url_handle=url.rstrip("/").split("/")[-1] if "/collections/" in url else "",
+            url_handle=extract_collection_handle(url),
         )
 
         result = audit_collection(audit_data)
@@ -410,7 +411,7 @@ for i, col in enumerate(batch):
                 linked_from_homepage=True if linked_homepage == "Yes" else (False if linked_homepage == "No" else None),
                 linked_from_blog=True if linked_blog == "Yes" else (False if linked_blog == "No" else None),
                 brand_usps=st.session_state.client_profile.get("brand_usps", []),
-                url_handle=col["collection_url"].rstrip("/").split("/")[-1] if "/collections/" in col["collection_url"] else "",
+                url_handle=extract_collection_handle(col["collection_url"]),
             )
 
             result = audit_collection(audit_data)

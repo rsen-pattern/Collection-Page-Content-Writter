@@ -213,7 +213,7 @@ if uploaded_file is not None:
                         {"Source column": k, "Maps to": v}
                         for k, v in diagnosis["mapping"].items()
                     ]
-                    st.dataframe(pd.DataFrame(mapping_rows), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(mapping_rows), width="stretch", hide_index=True)
                     if diagnosis.get("header_row") is not None:
                         st.caption(f"Header row identified: Row {diagnosis['header_row']}")
 
@@ -449,7 +449,7 @@ if st.session_state.collection_groups:
             }
             for g in st.session_state.collection_groups
         ]
-        st.dataframe(pd.DataFrame(preview_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(preview_rows), width="stretch")
 
     # Build set of zero-volume URLs for inline warnings
     zero_vol_urls = {
@@ -496,7 +496,8 @@ if st.session_state.collection_groups:
                 )
 
                 if primary_idx != 0:
-                    new_primary = all_keywords[primary_idx]
+                    from core.text_utils import clean_keyword as _clean
+                    new_primary = _clean(all_keywords[primary_idx])
                     st.session_state.collection_groups[i].primary_keyword = new_primary
 
             with gc2:

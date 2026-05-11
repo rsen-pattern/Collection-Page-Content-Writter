@@ -3,6 +3,8 @@
 import re
 import streamlit as st
 
+from core.text_utils import clean_keyword
+
 
 st.title("Single URL Content Writer")
 st.markdown("Generate optimized content for a single collection page — no CSV upload or batch workflow needed.")
@@ -42,7 +44,7 @@ with col_left:
             "🔍 Fetch",
             help="Fetch real products + existing copy from Shopify JSON",
             disabled=not bool(st.session_state.get("single_url_url_input", "")),
-            use_container_width=True,
+            width="stretch",
         )
 
     if fetch_clicked and collection_url:
@@ -196,9 +198,15 @@ st.markdown("---")
 # ============================================================
 st.markdown("## 3. Generate Content")
 
-# Parse inputs
-secondary_keywords = [kw.strip() for kw in secondary_keywords_text.strip().split("\n") if kw.strip()]
-brand_usps = [u.strip() for u in usps_text.strip().split("\n") if u.strip()]
+# Parse inputs — clean every user-pasted line so zero-width chars don't survive.
+collection_name = clean_keyword(collection_name)
+primary_keyword = clean_keyword(primary_keyword)
+secondary_keywords = [
+    clean_keyword(kw) for kw in secondary_keywords_text.strip().split("\n") if kw.strip()
+]
+secondary_keywords = [kw for kw in secondary_keywords if kw]
+brand_usps = [clean_keyword(u) for u in usps_text.strip().split("\n") if u.strip()]
+brand_usps = [u for u in brand_usps if u]
 
 products_to_link = []
 for line in products_text.strip().split("\n"):
@@ -269,7 +277,7 @@ if st.button(
     "Generate Content",
     type="primary",
     disabled=not (required_filled and has_api_key),
-    use_container_width=True,
+    width="stretch",
 ):
     # Clear cached widget keys so new content shows on rerun
     for wkey in ["single_desc", "single_seo_title", "single_h1", "single_meta", "single_tags_edit"]:
