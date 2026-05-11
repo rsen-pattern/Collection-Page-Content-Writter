@@ -112,11 +112,18 @@ def save_state(state) -> None:
     version only within the same script run — across reruns, mutations to
     mutable fields (lists, dicts) are still visible because Python
     references are shared, but invariants haven't been re-checked.
+
+    Validation walks ``state.__dict__`` rather than ``state.model_dump()`` so
+    that item references in ``list[Any]`` / ``dict[str, Any]`` fields survive
+    unchanged. A round-trip through ``model_dump`` would recursively serialise
+    nested Pydantic models (e.g. ``CollectionGroup`` instances inside
+    ``collection_groups``) into plain dicts, breaking attribute access on the
+    next render.
     """
     from core.session_state import AppState
 
     try:
-        validated = AppState.model_validate(state.model_dump())
+        validated = AppState.model_validate(state.__dict__)
         st.session_state[_STATE_KEY] = validated
     except Exception as e:
         from core.telemetry import log_event
