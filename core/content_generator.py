@@ -96,6 +96,12 @@ def build_full_brief_prompt(
         else "No related collections provided — use placeholder collection names."
     )
 
+    related_blog_posts_str = (
+        "\n".join(f"- [{p['name']}]({p['url']})" for p in brief.related_blog_posts)
+        if brief.related_blog_posts
+        else "No related blog posts provided — omit the optional blog link."
+    )
+
     paa_str = (
         "\n".join(f"- {q}" for q in brief.paa_questions)
         if brief.paa_questions
@@ -130,6 +136,7 @@ def build_full_brief_prompt(
         secondary_keywords=", ".join(brief.secondary_keywords),
         product_links=product_links_str,
         related_collections=related_collections_str,
+        related_blog_posts=related_blog_posts_str,
         paa_questions=paa_str,
         brand_name=brief.brand_name,
         store_url=brief.store_url,
@@ -173,6 +180,12 @@ def build_description_prompt(
         else "No related collections — use placeholder names."
     )
 
+    related_blog_posts_str = (
+        "\n".join(f"- [{p['name']}]({p['url']})" for p in brief.related_blog_posts)
+        if brief.related_blog_posts
+        else "No related blog posts provided — omit the optional blog link."
+    )
+
     existing_content_block = ""
     if brief.existing_content:
         existing_content_block = (
@@ -190,6 +203,7 @@ def build_description_prompt(
         secondary_keywords=", ".join(brief.secondary_keywords),
         product_links=product_links_str,
         related_collections=related_str,
+        related_blog_posts=related_blog_posts_str,
         target_word_count=brief.target_word_count,
         min_words=cl["sweet_spot_min"],
         max_words=cl["sweet_spot_max"],
@@ -226,6 +240,12 @@ def build_bottom_copy_prompt(brief: ContentBrief) -> str:
         else "No related collections — use placeholder names."
     )
 
+    related_blog_posts_str = (
+        "\n".join(f"- [{p['name']}]({p['url']})" for p in brief.related_blog_posts)
+        if brief.related_blog_posts
+        else "No related blog posts provided — omit the optional blog link."
+    )
+
     existing_content_block = ""
     if brief.existing_content:
         existing_content_block = (
@@ -243,6 +263,7 @@ def build_bottom_copy_prompt(brief: ContentBrief) -> str:
         secondary_keywords=", ".join(brief.secondary_keywords),
         product_links=product_links_str,
         related_collections=related_str,
+        related_blog_posts=related_blog_posts_str,
         target_word_count=target,
         min_words=min_words,
         max_words=max_words,

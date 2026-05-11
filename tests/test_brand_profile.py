@@ -139,6 +139,45 @@ class TestPastFeedback:
         assert loaded.prompt_overrides.banned_phrases == ["perfect for", "discover our range"]
 
 
+class TestSitemapOnProfile:
+    def test_sitemap_fields_default_empty(self):
+        p = BrandProfile(brand_name="X")
+        assert p.sitemap_url == ""
+        assert p.sitemap_parsed == {}
+        assert p.sitemap_fetched_at == ""
+
+    def test_sitemap_round_trip(self):
+        from core.sitemap import ParsedSitemap, SitemapUrl
+        parsed = ParsedSitemap(
+            source_url="https://x.com/sitemap.xml",
+            fetched_at="2026-05-11T12:00:00Z",
+            products=[SitemapUrl(url="https://x.com/products/a", url_type="product", handle="a", title_guess="A")],
+        )
+        save_profile(BrandProfile(
+            brand_name="X",
+            sitemap_url="https://x.com/sitemap.xml",
+            sitemap_parsed=parsed.to_dict(),
+            sitemap_fetched_at=parsed.fetched_at,
+        ))
+        loaded = load_profile("X")
+        assert loaded.sitemap_url == "https://x.com/sitemap.xml"
+        assert loaded.sitemap_fetched_at == "2026-05-11T12:00:00Z"
+        restored = ParsedSitemap.from_dict(loaded.sitemap_parsed)
+        assert restored.total_urls == 1
+        assert restored.products[0].url == "https://x.com/products/a"
+
+    def test_get_sitemap_returns_none_without_data(self):
+        from core.brand_profile import get_sitemap
+        assert get_sitemap(BrandProfile(brand_name="X")) is None
+
+    def test_get_sitemap_reconstructs_parsed(self):
+        from core.brand_profile import get_sitemap
+        from core.sitemap import ParsedSitemap, SitemapUrl
+        parsed = ParsedSitemap(products=[SitemapUrl(url="u", url_type="product", handle="u", title_guess="U")])
+        profile = BrandProfile(brand_name="X", sitemap_parsed=parsed.to_dict())
+        assert get_sitemap(profile).total_urls == 1
+
+
 class TestBuildCustomRulesBlock:
     def test_alt_text_uses_alt_fields(self):
         overrides = BrandPromptOverrides(

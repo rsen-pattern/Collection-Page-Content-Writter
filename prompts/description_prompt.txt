@@ -6,6 +6,7 @@ COLLECTION CONTEXT:
 - Secondary Keywords: {secondary_keywords}
 - Products to Link: {product_links}
 - Related Collections: {related_collections}
+- Related Blog Posts: {related_blog_posts}
 {existing_content_block}
 WORD COUNT & FORMAT:
 - Target: {target_word_count} words (minimum {min_words}, maximum {max_words})
@@ -23,6 +24,7 @@ REQUIRED CONTENT ELEMENTS:
 - Include {min_product_links}-{max_product_links} internal product links as markdown links using exact-match descriptive anchor text
 - Include {min_collection_links}-{max_collection_links} related collection links as markdown links
 - NEVER use (#) placeholder links — use real URLs from the provided list, or construct realistic relative paths from product/collection names
+- You MAY include 1 link to a related blog post if one is provided AND the topic is genuinely relevant. Skip it if no blog post fits naturally; never force-fit.
 
 OPTIONAL CONTENT ELEMENTS (use only when they genuinely add value):
 - Brand USPs (available: {usps}) — include one ONLY if it's directly relevant to the products in this collection. If no USP fits naturally, write copy without one.

@@ -8,6 +8,7 @@ COLLECTION CONTEXT:
 - Secondary Keywords: {secondary_keywords}
 - Products to Link: {product_links}
 - Related Collections: {related_collections}
+- Related Blog Posts: {related_blog_posts}
 - People Also Ask: {paa_questions}
 
 BRAND CONTEXT:
@@ -50,6 +51,7 @@ Description rules:
 - Must pass the competitor test — include {brand_name}-specific details
 - Use concrete verbs, no AI-isms, no forced triads
 - NEVER use (#) placeholder links — use real URLs from the provided list, or construct realistic relative paths
+- You MAY include 1 link to a related blog post if one is provided AND the topic is genuinely relevant. Skip it if no blog post fits naturally; never force-fit.
 
 4. META DESCRIPTION
 - Under 155 characters, includes primary keyword, ends with clear CTA

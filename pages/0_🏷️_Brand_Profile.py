@@ -7,7 +7,13 @@ from core.brand_profile import (
     BrandPromptOverrides,
     list_profiles,
     load_profile,
+    refresh_profile_sitemap,
     save_profile,
+)
+from core.sitemap import (
+    ParsedSitemap,
+    fetch_sitemap,
+    parse_sitemap_file,
 )
 
 st.title("Brand Profiles")
@@ -15,6 +21,23 @@ st.markdown(
     "Save per-client settings — FAQ count, voice notes, custom rules, and alt-text preferences. "
     "Loaded profiles auto-fill the Content Studio."
 )
+
+
+def _render_sitemap_banner(profile: BrandProfile) -> None:
+    """Render the site-structure status line for the active profile."""
+    if profile.sitemap_parsed:
+        try:
+            parsed = ParsedSitemap.from_dict(profile.sitemap_parsed)
+            st.info(
+                f"📍 Site structure: {parsed.total_urls:,} URLs from sitemap "
+                f"(fetched {profile.sitemap_fetched_at or 'unknown'})."
+            )
+        except Exception:
+            st.warning("📍 Site structure: sitemap data unreadable — re-fetch recommended.")
+    else:
+        st.caption(
+            "📍 Site structure: No sitemap loaded — link suggestions are limited to user-provided URLs."
+        )
 
 # ─── Load existing profile ───────────────────────────────────────────────
 
@@ -44,6 +67,8 @@ st.markdown("---")
 # ─── Build current profile from session or loaded ───────────────────────
 
 _loaded: BrandProfile = st.session_state.get("_bp_loaded", BrandProfile())
+
+_render_sitemap_banner(_loaded)
 
 st.markdown("## Profile Details")
 
@@ -151,6 +176,111 @@ if pending:
         st.success(f"Added {len(keep)} phrases. Review the 'Banned phrases' field below and save.")
         st.rerun()
 
+# ─── Site Structure (sitemap) ────────────────────────────────────────────
+
+st.divider()
+st.subheader("Site Structure (optional)")
+st.caption(
+    "Give the tool your sitemap so it can suggest real internal links — products, "
+    "collections, and blog posts — instead of inventing paths."
+)
+
+_pending_parsed: ParsedSitemap | None = st.session_state.get("_bp_pending_sitemap")
+if _pending_parsed is None and _loaded.sitemap_parsed:
+    try:
+        _pending_parsed = ParsedSitemap.from_dict(_loaded.sitemap_parsed)
+    except Exception:
+        _pending_parsed = None
+
+sitemap_url_input_default = _loaded.sitemap_url
+
+sm_tab_fetch, sm_tab_upload = st.tabs(["Fetch from URL", "Upload File"])
+
+with sm_tab_fetch:
+    bp_sitemap_url = st.text_input(
+        "Sitemap URL",
+        value=sitemap_url_input_default,
+        key="bp_sitemap_url",
+        placeholder="https://yourstore.com/sitemap.xml",
+        help="Shopify stores typically expose a sitemap index at <store>/sitemap.xml.",
+    )
+    if st.button("🔄 Fetch sitemap", disabled=not bp_sitemap_url.strip()):
+        with st.spinner("Fetching sitemap…"):
+            parsed = fetch_sitemap(bp_sitemap_url.strip())
+        if parsed.error and parsed.total_urls == 0:
+            st.error(f"Fetch failed: {parsed.error}")
+        else:
+            if parsed.error:
+                st.warning(parsed.error)
+            st.session_state["_bp_pending_sitemap"] = parsed
+            st.session_state["_bp_pending_sitemap_source_url"] = bp_sitemap_url.strip()
+            _pending_parsed = parsed
+
+with sm_tab_upload:
+    uploaded_sm = st.file_uploader(
+        "Sitemap file (.xml or .xml.gz)",
+        type=["xml", "gz"],
+        key="bp_sitemap_upload",
+    )
+    if uploaded_sm and st.button("Parse uploaded file"):
+        parsed = parse_sitemap_file(uploaded_sm.read(), source_url=uploaded_sm.name)
+        if parsed.error and parsed.total_urls == 0:
+            st.error(f"Parse failed: {parsed.error}")
+        else:
+            if parsed.error:
+                st.warning(parsed.error)
+            st.session_state["_bp_pending_sitemap"] = parsed
+            st.session_state["_bp_pending_sitemap_source_url"] = ""  # uploaded → no refresh URL
+            _pending_parsed = parsed
+
+if _pending_parsed and _pending_parsed.total_urls:
+    st.success(
+        f"✅ Parsed {_pending_parsed.total_urls:,} URLs — "
+        f"{len(_pending_parsed.products):,} products · "
+        f"{len(_pending_parsed.collections):,} collections · "
+        f"{len(_pending_parsed.blog_posts):,} blog posts · "
+        f"{len(_pending_parsed.pages):,} pages · "
+        f"{len(_pending_parsed.other):,} other"
+    )
+    if _pending_parsed.fetched_at:
+        st.caption(f"Fetched: {_pending_parsed.fetched_at}")
+
+    with st.expander("Show URL preview", expanded=False):
+        import pandas as _pd
+
+        def _preview(rows, label):
+            if not rows:
+                return
+            st.markdown(f"**{label} (first 20)**")
+            st.dataframe(
+                _pd.DataFrame(
+                    [{"title": r.title_guess, "url": r.url} for r in rows[:20]]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        _preview(_pending_parsed.products, "Products")
+        _preview(_pending_parsed.collections, "Collections")
+        _preview(_pending_parsed.blog_posts, "Blog posts")
+        _preview(_pending_parsed.pages, "Pages")
+
+    refresh_disabled = not _loaded.sitemap_url
+    if st.button(
+        "Refresh sitemap (re-fetch from URL)",
+        disabled=refresh_disabled,
+        help="Re-fetches the sitemap from the saved URL. Disabled for uploaded files.",
+    ):
+        with st.spinner("Re-fetching sitemap…"):
+            updated, err = refresh_profile_sitemap(_loaded)
+        if err:
+            st.warning(f"Refresh had issues: {err}")
+        save_profile(updated)
+        st.session_state["_bp_loaded"] = updated
+        st.session_state["_bp_pending_sitemap"] = ParsedSitemap.from_dict(updated.sitemap_parsed)
+        st.success("Sitemap refreshed.")
+        st.rerun()
+
 # ─── FAQ settings ────────────────────────────────────────────────────────
 
 with st.expander("❓ FAQ Settings", expanded=False):
@@ -220,6 +350,19 @@ sc1, sc2 = st.columns(2)
 
 with sc1:
     if st.button("💾 Save Profile", type="primary", disabled=not bool(bp_brand_name.strip())):
+        # Carry forward existing sitemap unless a new one is pending in the session.
+        pending_sm = st.session_state.get("_bp_pending_sitemap")
+        if pending_sm is not None:
+            sitemap_parsed_dict = pending_sm.to_dict()
+            sitemap_fetched_at = pending_sm.fetched_at
+            sitemap_url_to_save = st.session_state.get(
+                "_bp_pending_sitemap_source_url", _loaded.sitemap_url
+            )
+        else:
+            sitemap_parsed_dict = _loaded.sitemap_parsed
+            sitemap_fetched_at = _loaded.sitemap_fetched_at
+            sitemap_url_to_save = bp_sitemap_url.strip() if "bp_sitemap_url" in st.session_state else _loaded.sitemap_url
+
         profile = BrandProfile(
             brand_name=bp_brand_name.strip(),
             store_url=bp_store_url.strip(),
@@ -228,6 +371,9 @@ with sc1:
             target_market=bp_target_market,
             faq_count=int(bp_faq_count),
             past_feedback=bp_past_feedback.strip(),
+            sitemap_url=sitemap_url_to_save,
+            sitemap_parsed=sitemap_parsed_dict,
+            sitemap_fetched_at=sitemap_fetched_at,
             prompt_overrides=BrandPromptOverrides(
                 brand_custom_rules=bp_custom_rules.strip(),
                 voice_examples=bp_voice_examples.strip(),
@@ -238,6 +384,8 @@ with sc1:
         )
         save_profile(profile)
         st.session_state["_bp_loaded"] = profile
+        st.session_state.pop("_bp_pending_sitemap", None)
+        st.session_state.pop("_bp_pending_sitemap_source_url", None)
         st.success(f"Profile saved for **{profile.brand_name}**.")
 
 with sc2:
@@ -259,4 +407,10 @@ with sc2:
             "alt_text_examples": bp_alt_examples.strip(),
             "banned_phrases": [p.strip() for p in bp_banned_phrases.strip().split("\n") if p.strip()],
         }
+        # Push sitemap into session so Data Input + Single URL Writer can pick it up.
+        pending_sm = st.session_state.get("_bp_pending_sitemap")
+        if pending_sm is not None:
+            st.session_state["sitemap_parsed"] = pending_sm.to_dict()
+        elif _loaded.sitemap_parsed:
+            st.session_state["sitemap_parsed"] = _loaded.sitemap_parsed
         st.success("Profile applied to session. Head to the Content Studio to generate content.")

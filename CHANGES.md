@@ -16,6 +16,97 @@ broke the "🔍 Scrape products for all collections" button end-to-end.
 
 **Files touched:** `core/data_ingestion.py`, `tests/test_data_ingestion.py`.
 
+## Update — Sitemap ingestion at the Brand Profile level
+
+Brand profiles can now hold a parsed sitemap of the client store. When
+present, generated copy picks real, indexable URLs for internal links —
+products, collections, and blog posts — instead of inventing paths.
+
+### Core
+
+- New `core/sitemap.py` with:
+  - `SitemapUrl` / `ParsedSitemap` dataclasses, JSON round-trip via
+    `to_dict` / `from_dict`.
+  - `fetch_sitemap(url, …)` — fetches and parses a sitemap or sitemap index;
+    recurses one level so the typical Shopify `/sitemap.xml` index expands to
+    its per-type children. Handles `.xml.gz` via stdlib `gzip`. Caps total
+    URLs at `5000` by default. Never raises — errors surface via the
+    `error` field.
+  - `parse_sitemap_file(bytes, …)` — same parser, no network.
+  - `find_related_urls(primary_keyword, secondary_keywords, sitemap,
+    target_url, …)` — picks best-matching sitemap URLs (excluding the page
+    being written) for products / collections / blog posts. Uses
+    `difflib.SequenceMatcher`, no new dependencies.
+- `core/brand_profile.py`: `BrandProfile` gained `sitemap_url`,
+  `sitemap_parsed` (stored as the `to_dict()` form so JSON serialization is
+  clean), and `sitemap_fetched_at`. New helpers `get_sitemap(profile)` and
+  `refresh_profile_sitemap(profile)`.
+- `core/brief_builder.py`: `ContentBrief` gained `related_blog_posts`.
+  `build_brief` and `build_briefs_for_batch` accept an optional `sitemap=`
+  argument and fill empty link slots from sitemap matches; existing user-
+  supplied links are always preserved.
+- `core/content_generator.py`: `build_full_brief_prompt`,
+  `build_description_prompt`, `build_bottom_copy_prompt` now inject a
+  `{related_blog_posts}` block.
+
+### Prompts
+
+- `prompts/full_brief_prompt.txt`, `prompts/description_prompt.txt`,
+  `prompts/bottom_of_page_copy_prompt.txt`: new "Related Blog Posts" input
+  block + an explicit "MAY include 1 blog post link if genuinely relevant"
+  rule. Skipped when no blog post is provided — never force-fit.
+
+### UI
+
+- `pages/0_🏷️_Brand_Profile.py`: new **Site Structure** section between
+  Past feedback and FAQ Settings, with tabs for Fetch from URL and Upload
+  File, post-parse summary (count per category), URL preview expander,
+  Refresh button (disabled for uploaded files), and a status banner at
+  the top of the page.
+- `pages/1_📊_Data_Input.py`: status banner mirroring the Brand Profile
+  page. The "🔍 Scrape products for all collections" button falls back to
+  sitemap suggestions for any collection where the live scrape returns no
+  products — surfaced in the completion message.
+- `pages/6_✏️_Single_URL_Writer.py`: new "Related Blog Posts to Link" text
+  area; the "🔍 Fetch" button pre-fills related collections + blog posts
+  (and products as a fallback) from the loaded sitemap.
+
+### Constraints respected
+
+- No new pip dependencies — stdlib `xml.etree`, `gzip`, `urllib.parse`,
+  `difflib` plus already-vendored `requests`.
+- Sitemap is optional throughout — every reference is guarded so existing
+  flows behave exactly as before when no sitemap is loaded.
+- Parsed sitemap is cached on the brand profile JSON; no re-fetch on each
+  session.
+
+### Tests
+
+- New `tests/test_sitemap.py` covering URL classification, title-from-handle
+  derivation, urlset parsing, sitemapindex recursion, gzip decompression,
+  the `max_urls` cap, malformed-XML / network-error handling, dict
+  round-trip, `find_related_urls` (caps, target-URL exclusion, score
+  ordering).
+- `tests/test_brand_profile.py`: sitemap round-trip + `get_sitemap` reconstruction.
+- `tests/test_brief_builder.py`: sitemap fallback fills empty link slots,
+  preserves existing user-supplied links, no-op when sitemap is None.
+- New fixtures under `tests/fixtures/`: `sample_sitemap.xml`,
+  `sample_sitemap_index.xml`, `sample_sitemap_products.xml`,
+  `sample_sitemap_collections.xml`.
+
+**Files touched:**
+`core/sitemap.py` (new), `core/brand_profile.py`, `core/brief_builder.py`,
+`core/content_generator.py`,
+`prompts/full_brief_prompt.txt`, `prompts/description_prompt.txt`,
+`prompts/bottom_of_page_copy_prompt.txt`,
+`pages/0_🏷️_Brand_Profile.py`, `pages/1_📊_Data_Input.py`,
+`pages/6_✏️_Single_URL_Writer.py`,
+`tests/test_sitemap.py` (new), `tests/test_brand_profile.py`,
+`tests/test_brief_builder.py`,
+`tests/fixtures/sample_sitemap*.xml` (new).
+
+---
+
 ## Update — Past feedback log + softer brand voice quotas
 
 **Prompt 6 — two related changes in one pass**

@@ -26,6 +26,24 @@ else:
     st.success(f"Active brand: **{cp['brand_name']}** · {len(cp.get('brand_usps', []))} USPs")
     st.page_link("pages/0_🏷️_Brand_Profile.py", label="Edit brand profile", icon="🏷️")
 
+# Sitemap status — surfaces whether smart link suggestions are active.
+_sitemap_dict = st.session_state.get("sitemap_parsed")
+if _sitemap_dict:
+    from core.sitemap import ParsedSitemap as _PS
+
+    try:
+        _sm = _PS.from_dict(_sitemap_dict)
+        st.info(
+            f"📍 Site structure: {_sm.total_urls:,} URLs from sitemap — "
+            f"smart link suggestions active."
+        )
+    except Exception:
+        st.caption("📍 Site structure: sitemap data unreadable.")
+else:
+    st.caption(
+        "📍 Site structure: No sitemap loaded — link suggestions limited to user-provided URLs."
+    )
+
 # Profile is loaded by this point — gate already passed via st.stop() above.
 profile_valid = True
 
@@ -465,9 +483,21 @@ if st.session_state.collection_groups:
         help="Fetches real products from each collection URL via Shopify JSON. ~1-2s per collection.",
     ):
         from core.scraper import fetch_collection_data
+        from core.sitemap import ParsedSitemap as _PS, find_related_urls as _find
+
+        # Build sitemap once if available — used as a fallback per-collection.
+        _sm_dict = st.session_state.get("sitemap_parsed")
+        _sm_obj = None
+        if _sm_dict:
+            try:
+                _sm_obj = _PS.from_dict(_sm_dict)
+            except Exception:
+                _sm_obj = None
+
         progress = st.progress(0.0)
         status_msg = st.empty()
         scraped_count = 0
+        sitemap_fallback_count = 0
         groups = st.session_state.collection_groups
         for i, col in enumerate(groups):
             col_url = col.collection_url
@@ -481,8 +511,28 @@ if st.session_state.collection_groups:
                 col.existing_top_copy = col_data.existing_top_copy
                 col.existing_bottom_copy = col_data.existing_bottom_copy
                 scraped_count += 1
+            elif _sm_obj is not None:
+                # No live products — fall back to sitemap suggestions.
+                secondary = [
+                    kw.get("keyword", "") if isinstance(kw, dict) else str(kw)
+                    for kw in (col.secondary_keywords or [])
+                ]
+                hits = _find(
+                    primary_keyword=col.primary_keyword,
+                    secondary_keywords=secondary,
+                    sitemap=_sm_obj,
+                    target_url=col_url,
+                )
+                if hits["products"]:
+                    col.products_to_link = [
+                        {"name": p["name"], "url": p["url"]} for p in hits["products"][:8]
+                    ]
+                    sitemap_fallback_count += 1
             progress.progress((i + 1) / len(groups))
-        status_msg.text(f"Done — scraped products for {scraped_count}/{len(groups)} collections.")
+        summary = f"Done — scraped products for {scraped_count}/{len(groups)} collections."
+        if sitemap_fallback_count:
+            summary += f" Sitemap data used as fallback for {sitemap_fallback_count} collection(s)."
+        status_msg.text(summary)
         progress.empty()
         st.rerun()
 
