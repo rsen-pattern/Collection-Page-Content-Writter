@@ -74,4 +74,12 @@ def extract_banned_phrases(
         if 1 <= word_count <= 12:
             phrases.append(line)
 
+    from core.telemetry import log_event
+    log_event(
+        "feedback_extraction",
+        phrase_count=len(phrases),
+        feedback_length=len(feedback),
+        model=model,
+    )
+
     return phrases

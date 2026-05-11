@@ -241,6 +241,8 @@ def scrape_with_fallback(
 
     A tier with an empty key is skipped silently.
     """
+    from core.telemetry import log_event
+
     attempted: list[str] = []
     all_attempts: dict[str, ScrapedPageData] = {}
 
@@ -248,6 +250,13 @@ def scrape_with_fallback(
     attempted.append("direct")
     t1 = scrape_collection_page(url, timeout=timeout)
     all_attempts["direct"] = t1
+    log_event(
+        "scrape_attempt",
+        tier="direct",
+        url=url,
+        success=t1.success,
+        fields_found=t1.fields_found,
+    )
 
     if t1.success and t1.fields_found >= 2:
         return FallbackScrapeResult(
@@ -271,6 +280,13 @@ def scrape_with_fallback(
         attempted.append("webscraping_ai")
         t2 = scrape_via_webscraping_ai(url, webscraping_ai_key, timeout=timeout + 5)
         all_attempts["webscraping_ai"] = t2
+        log_event(
+            "scrape_attempt",
+            tier="webscraping_ai",
+            url=url,
+            success=t2.success,
+            fields_found=t2.fields_found,
+        )
         if t2.success and t2.fields_found >= 2:
             return FallbackScrapeResult(
                 data=t2,
@@ -284,6 +300,13 @@ def scrape_with_fallback(
         attempted.append("scraperapi")
         t3 = scrape_via_scraperapi(url, scraperapi_key, timeout=timeout + 5)
         all_attempts["scraperapi"] = t3
+        log_event(
+            "scrape_attempt",
+            tier="scraperapi",
+            url=url,
+            success=t3.success,
+            fields_found=t3.fields_found,
+        )
         if t3.success and t3.fields_found >= 2:
             return FallbackScrapeResult(
                 data=t3,

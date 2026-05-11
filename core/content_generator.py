@@ -478,15 +478,38 @@ def _call_bifrost(
     model: str,
     system_prompt: str,
     user_prompt: str,
+    generation_type: str = "",
 ) -> str:
     """Make a single call to Bifrost and return the response text."""
-    response = client.chat.completions.create(
+    from core.telemetry import log_event
+    import time as _time
+
+    _t0 = _time.monotonic()
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=2000,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except Exception as e:
+        log_event(
+            "bifrost_call",
+            model=model,
+            generation_type=generation_type,
+            duration_ms=int((_time.monotonic() - _t0) * 1000),
+            status="error",
+            error_type=type(e).__name__,
+        )
+        raise
+    log_event(
+        "bifrost_call",
         model=model,
-        max_tokens=2000,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        generation_type=generation_type,
+        duration_ms=int((_time.monotonic() - _t0) * 1000),
+        status="ok",
     )
     return response.choices[0].message.content
 
@@ -540,7 +563,10 @@ def humanize_content(
 
     for attempt_model in models_to_try:
         try:
-            response_text = _call_bifrost(client, attempt_model, system_prompt, user_prompt)
+            response_text = _call_bifrost(
+                client, attempt_model, system_prompt, user_prompt,
+                generation_type="humanize",
+            )
             used_model = attempt_model
             break
         except Exception as e:
@@ -551,6 +577,16 @@ def humanize_content(
         raise RuntimeError(
             f"Humanizer: all models failed. Tried: {', '.join(models_to_try)}. "
             f"Last error: {last_error}"
+        )
+
+    if used_model != model:
+        from core.telemetry import log_event
+        log_event(
+            "model_fallback",
+            attempted=model,
+            succeeded=used_model,
+            error=str(last_error) if last_error else "",
+            generation_type="humanize",
         )
 
     return response_text.strip(), used_model
@@ -617,7 +653,10 @@ def generate_content(
 
     for attempt_model in models_to_try:
         try:
-            response_text = _call_bifrost(client, attempt_model, system_prompt, user_prompt)
+            response_text = _call_bifrost(
+                client, attempt_model, system_prompt, user_prompt,
+                generation_type=generation_type,
+            )
             used_model = attempt_model
             break
         except Exception as e:
@@ -628,6 +667,16 @@ def generate_content(
         raise RuntimeError(
             f"All models failed. Tried: {', '.join(models_to_try)}. "
             f"Last error: {last_error}"
+        )
+
+    if used_model != model:
+        from core.telemetry import log_event
+        log_event(
+            "model_fallback",
+            attempted=model,
+            succeeded=used_model,
+            error=str(last_error) if last_error else "",
+            generation_type=generation_type,
         )
 
     result = GeneratedContent(

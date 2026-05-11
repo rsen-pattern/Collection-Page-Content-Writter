@@ -266,14 +266,33 @@ if "Full Run" in mode:
                 st.session_state[f"batch_{i}"] = False
             st.rerun()
 
+# ── Sub-collection opportunities indexed per parent for inline badges ─────
+opps_for_badges = identify_sub_collection_opportunities(
+    st.session_state.collection_groups
+)
+opps_by_parent: dict[str, list[dict]] = {}
+for _opp in opps_for_badges:
+    opps_by_parent.setdefault(_opp["parent_url"], []).append(_opp)
+st.session_state.sub_collection_opportunities = opps_by_parent
+
 batch_selections = []
 for i, sc in enumerate(scored):
+    _opps_for_row = opps_by_parent.get(sc.collection_url, [])
+    _badge = (
+        f" 💡 {len(_opps_for_row)} sub-opp{'s' if len(_opps_for_row) != 1 else ''}"
+        if _opps_for_row
+        else ""
+    )
     selected = st.checkbox(
-        f"{sc.collection_name} (Score: {sc.total_score}/18, Vol: {sc.total_volume:,})",
+        f"{sc.collection_name} (Score: {sc.total_score}/18, Vol: {sc.total_volume:,}){_badge}",
         value=sc.in_batch,
         key=f"batch_{i}",
     )
     batch_selections.append(selected)
+    if _opps_for_row:
+        with st.expander(f"💡 Sub-collection ideas for {sc.collection_name}", expanded=False):
+            for _opp in _opps_for_row:
+                st.caption(f"• **{_opp['keyword']}** — {_opp['volume']:,} searches/mo")
 
 selected_count = sum(batch_selections)
 

@@ -1,5 +1,8 @@
 """Step 5: Export & Implementation Tracking."""
 
+import io
+
+import pandas as pd
 import streamlit as st
 from datetime import datetime
 
@@ -153,6 +156,50 @@ if all_alt:
         data=alt_buf,
         file_name=f"alt_text_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    st.markdown("---")
+
+# --- Sub-Collection Opportunities ---
+_subops_by_parent: dict = st.session_state.get("sub_collection_opportunities") or {}
+_all_subops = [opp for opps in _subops_by_parent.values() for opp in opps]
+
+if _all_subops:
+    import re as _re
+    st.markdown("## 💡 Sub-Collection Opportunities for Next Phase")
+    st.markdown(
+        "These keywords have significant volume and didn't fit into any optimised "
+        "collection. Consider creating dedicated pages in your next engagement."
+    )
+
+    def _slugify(text: str) -> str:
+        text = _re.sub(r"[^\w\s-]", "", text.lower()).strip()
+        return _re.sub(r"[\s_]+", "-", text)
+
+    _subops_rows = [
+        {
+            "keyword": opp["keyword"],
+            "search_volume": opp["volume"],
+            "parent_collection": opp["parent_collection"],
+            "parent_url": opp["parent_url"],
+            "suggested_handle": _slugify(opp["keyword"]),
+        }
+        for opp in _all_subops
+    ]
+    _subops_df = pd.DataFrame(_subops_rows)
+    st.dataframe(
+        _subops_df[["keyword", "search_volume", "parent_collection"]],
+        width="stretch",
+        hide_index=True,
+    )
+
+    _csv_buf = io.BytesIO()
+    _subops_df.to_csv(_csv_buf, index=False)
+    _csv_buf.seek(0)
+    st.download_button(
+        "📥 Download sub-collection opportunities CSV",
+        data=_csv_buf,
+        file_name=f"sub_collection_opportunities_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
     )
     st.markdown("---")
 
