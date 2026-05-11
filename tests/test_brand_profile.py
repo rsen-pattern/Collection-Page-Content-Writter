@@ -202,3 +202,32 @@ class TestBuildCustomRulesBlock:
         overrides = BrandPromptOverrides()
         assert build_custom_rules_block(overrides, "alt_text") == ""
         assert build_custom_rules_block(overrides, "full_brief") == ""
+
+
+class TestNewBrandFields:
+    def test_humanize_by_default_round_trip(self):
+        save_profile(BrandProfile(brand_name="X", humanize_by_default=True))
+        loaded = load_profile("X")
+        assert loaded.humanize_by_default is True
+
+    def test_humanize_by_default_defaults_false(self):
+        p = BrandProfile.from_dict({"brand_name": "Y"})
+        assert p.humanize_by_default is False
+
+    def test_dedup_overrides_round_trip(self):
+        profile = BrandProfile(
+            brand_name="X",
+            prompt_overrides=BrandPromptOverrides(
+                dedup_overrides={"gold cap": "gold-cap-x", "gold caps": "gold-caps-x"},
+            ),
+        )
+        save_profile(profile)
+        loaded = load_profile("X")
+        assert loaded.prompt_overrides.dedup_overrides == {
+            "gold cap": "gold-cap-x",
+            "gold caps": "gold-caps-x",
+        }
+
+    def test_dedup_overrides_defaults_empty(self):
+        overrides = BrandPromptOverrides.from_dict({})
+        assert overrides.dedup_overrides == {}

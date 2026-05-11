@@ -99,3 +99,56 @@ def test_reset_wip_state_clears_documented_keys_without_touching_credentials():
     assert fake_st.session_state["client_profile"]["brand_name"] == "untouched-by-reset"
     assert fake_st.session_state["webscraping_ai_key"] == "wsa-keep"
     assert fake_st.session_state["scraperapi_key"] == "sapi-keep"
+
+
+def test_new_wip_keys_registered():
+    """Verify the registry contains keys added by later features."""
+    app, _ = _import_app()
+    # Keys added in Commit 1 (post-merge upgrade): the previously-missed
+    # ones that would otherwise leak across brand switches.
+    expected = {
+        "source_keyword_width",
+        "sub_collection_opportunities",
+        "audit_results_generated",
+        "scrape_all_attempts",
+    }
+    assert expected.issubset(set(app.WIP_DEFAULT_FACTORIES.keys()))
+
+
+def test_persistent_session_keys_documented():
+    app, _ = _import_app()
+    # Credentials, model, scraper keys, and client_profile must be listed.
+    expected = {
+        "bifrost_api_key",
+        "bifrost_base_url",
+        "selected_model",
+        "dataforseo_login",
+        "dataforseo_password",
+        "webscraping_ai_key",
+        "scraperapi_key",
+        "client_profile",
+    }
+    assert expected.issubset(set(app.PERSISTENT_SESSION_KEYS))
+
+
+def test_reset_clears_internal_cache_keys():
+    app, fake_st = _import_app()
+    fake_st.session_state.update({
+        "_opps_cache_key": "abc123",
+        "_bp_pending_sitemap": {"x": 1},
+        "_pending_generate_all": True,
+        "bifrost_api_key": "sk-keep",
+    })
+    app.reset_wip_state()
+    # Internal caches dropped
+    assert "_opps_cache_key" not in fake_st.session_state
+    assert "_bp_pending_sitemap" not in fake_st.session_state
+    assert "_pending_generate_all" not in fake_st.session_state
+    # Credentials preserved
+    assert fake_st.session_state["bifrost_api_key"] == "sk-keep"
+
+
+def test_clear_wip_state_alias_matches_reset():
+    """The clear_wip_state alias is just reset_wip_state under a different name."""
+    app, _ = _import_app()
+    assert app.clear_wip_state is app.reset_wip_state

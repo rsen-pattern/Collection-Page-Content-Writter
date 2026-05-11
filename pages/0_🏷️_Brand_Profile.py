@@ -22,6 +22,23 @@ def _clean_lines(raw: str) -> list[str]:
     """Split a textarea string into cleaned, non-empty lines."""
     return [cleaned for line in raw.split("\n") if (cleaned := clean_keyword(line.strip()))]
 
+
+def _parse_dedup_overrides(raw: str) -> dict:
+    """Parse `key=value` lines into a dict. Empty lines and lines without
+    `=` are skipped silently. Keys are lowercased to match the lookup path
+    in core.brief_builder._normalise_for_dedup."""
+    out: dict[str, str] = {}
+    for line in raw.split("\n"):
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = clean_keyword(key.strip()).lower()
+        value = clean_keyword(value.strip())
+        if key and value:
+            out[key] = value
+    return out
+
 st.title("Brand Profiles")
 st.markdown(
     "Save per-client settings — FAQ count, voice notes, custom rules, and alt-text preferences. "
@@ -300,6 +317,17 @@ with st.expander("❓ FAQ Settings", expanded=False):
     )
     st.caption("This overrides the global default (4) for all collections generated under this profile.")
 
+    bp_humanize_by_default = st.checkbox(
+        "Humanise content by default for this brand",
+        value=bool(_loaded.humanize_by_default),
+        key="bp_humanize_by_default",
+        help=(
+            "When checked, the humaniser pass runs automatically on every "
+            "generation for this brand. Can still be toggled per-session in "
+            "the Content Studio."
+        ),
+    )
+
 # ─── Prompt overrides ────────────────────────────────────────────────────
 
 overrides = _loaded.prompt_overrides
@@ -328,6 +356,24 @@ with st.expander("✏️ Prompt Override Rules", expanded=False):
         height=100,
         placeholder="e.g.\nperfect for\ndiscover our range\nwhether you're looking for",
         help="These phrases will never appear in generated content. Add manually or extract from feedback above.",
+    )
+
+with st.expander("🔧 Dedup overrides (advanced)", expanded=False):
+    st.caption(
+        "By default the tool deduplicates keywords like 'shirt' / 'shirts'. "
+        "If your brand targets different intents for singular vs plural variants, "
+        "add overrides here — one per line in the format `keyword=normalised_form`. "
+        "Example: `gold cap=gold-cap-distinct` keeps it separate from `gold caps`."
+    )
+    _existing_dedup_lines = "\n".join(
+        f"{k}={v}" for k, v in (overrides.dedup_overrides or {}).items()
+    )
+    bp_dedup_overrides = st.text_area(
+        "Dedup overrides",
+        value=_existing_dedup_lines,
+        key="bp_dedup_overrides",
+        height=100,
+        placeholder="gold cap=gold-cap-distinct\ngold caps=gold-caps-distinct",
     )
 
 # ─── Alt text settings ───────────────────────────────────────────────────
@@ -377,6 +423,7 @@ with sc1:
             target_market=bp_target_market,
             faq_count=int(bp_faq_count),
             past_feedback=clean_keyword(bp_past_feedback.strip()),
+            humanize_by_default=bool(bp_humanize_by_default),
             sitemap_url=sitemap_url_to_save,
             sitemap_parsed=sitemap_parsed_dict,
             sitemap_fetched_at=sitemap_fetched_at,
@@ -386,6 +433,7 @@ with sc1:
                 alt_text_rules=clean_keyword(bp_alt_rules.strip()),
                 alt_text_examples=clean_keyword(bp_alt_examples.strip()),
                 banned_phrases=_clean_lines(bp_banned_phrases),
+                dedup_overrides=_parse_dedup_overrides(bp_dedup_overrides),
             ),
         )
         save_profile(profile)
@@ -405,6 +453,7 @@ with sc2:
                 "target_market": bp_target_market,
                 "faq_count": int(bp_faq_count),
                 "past_feedback": clean_keyword(bp_past_feedback.strip()),
+                "humanize_by_default": bool(bp_humanize_by_default),
             },
             "prompt_overrides": {
                 "brand_custom_rules": clean_keyword(bp_custom_rules.strip()),
@@ -412,12 +461,18 @@ with sc2:
                 "alt_text_rules": clean_keyword(bp_alt_rules.strip()),
                 "alt_text_examples": clean_keyword(bp_alt_examples.strip()),
                 "banned_phrases": _clean_lines(bp_banned_phrases),
+                "dedup_overrides": _parse_dedup_overrides(bp_dedup_overrides),
             },
         }
 
     def _apply_brand_payload(payload: dict) -> None:
         st.session_state.client_profile = payload["client_profile"]
         st.session_state["prompt_overrides"] = payload["prompt_overrides"]
+        # Apply the brand's humaniser default to the session toggle so the
+        # Content Studio picks it up on first render.
+        st.session_state["humanize_enabled"] = bool(
+            payload["client_profile"].get("humanize_by_default", False)
+        )
         # Push sitemap into session so Data Input + Single URL Writer can pick it up.
         pending_sm = st.session_state.get("_bp_pending_sitemap")
         if pending_sm is not None:
@@ -444,12 +499,58 @@ with sc2:
             _apply_brand_payload(_build_apply_payload())
             st.toast("Profile applied to session.", icon="✅")
 
+def _summarise_wip() -> list[str]:
+    """Return a human-readable inventory of what's currently in WIP state."""
+    lines = []
+
+    collections = st.session_state.get("collection_groups") or []
+    if collections:
+        upload_format = st.session_state.get("source_format") or "unknown format"
+        lines.append(
+            f"- **{len(collections)} collections** from uploaded data ({upload_format})"
+        )
+
+    batch = st.session_state.get("batch_collections") or []
+    if batch:
+        lines.append(f"- **{len(batch)} collections** in current batch")
+
+    generated = st.session_state.get("generated_content") or {}
+    if generated:
+        approved_count = sum(1 for c in generated.values() if c.get("approved"))
+        lines.append(
+            f"- Generated content for **{len(generated)} collections** "
+            f"({approved_count} approved)"
+        )
+
+    audits = st.session_state.get("audit_results") or {}
+    if audits:
+        lines.append(f"- **{len(audits)} audit results**")
+
+    single = st.session_state.get("single_url_content") or {}
+    if single:
+        name = single.get("collection_name", "unnamed")
+        lines.append(f"- 1 Single URL Writer draft (*{name}*)")
+
+    tracker = st.session_state.get("implementation_tracker") or {}
+    if tracker:
+        lines.append(f"- **{len(tracker)} implementation-tracker entries**")
+
+    return lines
+
+
 if st.session_state.get("_pending_brand_switch"):
-    st.warning(
-        "Switching brands will clear all in-progress work: keyword data, "
-        "scores, batches, audits, generated content, and the Single URL Writer. "
-        "This cannot be undone."
-    )
+    _wip_summary = _summarise_wip()
+    if _wip_summary:
+        st.warning(
+            "**Switching brands will clear all in-progress work:**\n\n"
+            + "\n".join(_wip_summary)
+            + "\n\nThis cannot be undone."
+        )
+    else:
+        st.warning(
+            "Switching brands will clear any in-progress work. "
+            "This cannot be undone."
+        )
     _bs1, _bs2 = st.columns(2)
     with _bs1:
         if st.button("✅ Clear and switch", type="primary", key="confirm_brand_switch"):

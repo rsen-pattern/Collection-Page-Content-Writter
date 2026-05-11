@@ -64,3 +64,35 @@ class TestRoundTripWidth:
         for n in (3, 4):
             val = df.loc[0, f"Target Keyword {n}"]
             assert val == "" or pd.isna(val)
+
+
+class TestShopifyCsvWatermark:
+    def _collection(self):
+        return {
+            "collection_url": "https://x.com/collections/y",
+            "collection_name": "Y",
+            "content": {
+                "collection_title": "Y",
+                "description": "D",
+                "seo_title": "T",
+                "meta_description": "M",
+                "approved": True,
+            },
+            "products_to_link": [],
+        }
+
+    def test_test_run_csv_has_comment_header(self):
+        from core.exporter import export_shopify_csv
+        buf = export_shopify_csv([self._collection()], test_run=True)
+        text = buf.getvalue().decode("utf-8")
+        assert text.startswith("# TEST RUN OUTPUT — NOT FOR CLIENT DELIVERY\n")
+        assert "# Generated on" in text.split("\n")[1]
+        # Real CSV still follows the comment header
+        assert "Handle,Title" in text
+
+    def test_non_test_run_csv_has_no_comment_header(self):
+        from core.exporter import export_shopify_csv
+        buf = export_shopify_csv([self._collection()], test_run=False)
+        text = buf.getvalue().decode("utf-8")
+        assert not text.startswith("#")
+        assert text.startswith("Handle,Title")

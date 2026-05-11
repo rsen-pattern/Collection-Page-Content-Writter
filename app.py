@@ -59,18 +59,24 @@ def _default_client_profile() -> dict:
 # reset path uses this list; init_session_state() seeds these to fresh
 # empties on first load. API credentials and model selection are NOT in
 # this list and are never cleared on brand switch.
+#
+# When adding a new feature with per-batch / per-client state, REGISTER
+# THE KEY HERE so brand switches and reset_wip_state() pick it up.
 WIP_DEFAULT_FACTORIES = {
     "raw_data": lambda: None,
     "normalized_data": lambda: None,
     "source_format": lambda: None,
+    "source_keyword_width": lambda: 4,
     "collection_groups": list,
     "skipped_collections": list,
     "scored_collections": list,
     "batch_collections": list,
     "batch_mode": lambda: "",
     "audit_results": dict,
+    "audit_results_generated": dict,
     "scrape_results": dict,
     "scrape_tiers": dict,
+    "scrape_all_attempts": dict,
     "sf_crawl_data": dict,
     "content_briefs": dict,
     "generated_content": dict,
@@ -78,7 +84,44 @@ WIP_DEFAULT_FACTORIES = {
     "implementation_tracker": dict,
     "single_url_content": dict,
     "single_url_history": list,
+    "sub_collection_opportunities": dict,
 }
+
+
+# Keys that PERSIST across brand switches — never cleared by reset_wip_state.
+# Listed explicitly so it's clear what counts as cross-brand state.
+PERSISTENT_SESSION_KEYS = (
+    "bifrost_api_key",
+    "bifrost_base_url",
+    "selected_model",
+    "dataforseo_login",
+    "dataforseo_password",
+    "webscraping_ai_key",
+    "scraperapi_key",
+    "client_profile",
+)
+
+
+# Internal cache keys (underscore-prefixed) that should be cleared on
+# brand switch alongside WIP state. Not part of the public WIP registry
+# because they're implementation details, not user data.
+_INTERNAL_CACHE_KEYS = (
+    "_opps_cache_key",
+    "_bp_pending_sitemap",
+    "_bp_pending_sitemap_source_url",
+    "_bp_pending_extracted_bans",
+    "_bp_banned_phrases_merged",
+    "_bp_loaded",
+    "_single_prefill_name",
+    "_single_prefill_products",
+    "_single_prefill_related",
+    "_single_prefill_blogs",
+    "_single_scraped_products",
+    "_existing_top",
+    "_existing_bottom",
+    "_ai_diagnosis",
+    "_pending_generate_all",
+)
 
 
 def init_session_state():
@@ -127,14 +170,25 @@ def reset_wip_state() -> None:
     Does not touch API credentials, model selection, DataForSEO credentials,
     or client_profile (callers replace client_profile explicitly with the new
     brand). Safe to call multiple times.
+
+    Also clears underscore-prefixed internal cache keys (sub-collection
+    opportunity cache, pending UI state) and the per-brand sitemap so the
+    next brand starts from a truly empty session.
     """
     for key, factory in WIP_DEFAULT_FACTORIES.items():
         st.session_state[key] = factory()
+    # Internal caches are dropped entirely; init_session_state doesn't seed them.
+    for key in _INTERNAL_CACHE_KEYS:
+        st.session_state.pop(key, None)
     # Sitemap is per-brand and lives outside WIP_DEFAULT_FACTORIES so the
     # Brand Profile page can repopulate it without flicker. Clear it here.
     st.session_state.pop("sitemap_parsed", None)
     # Discard prompt_overrides — they belong to the previous brand.
     st.session_state.pop("prompt_overrides", None)
+
+
+# Backwards-compatible alias matching the prompt's naming convention.
+clear_wip_state = reset_wip_state
 
 
 init_session_state()

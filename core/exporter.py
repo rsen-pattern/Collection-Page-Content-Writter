@@ -166,8 +166,16 @@ def export_content_delivery(
 
 def export_shopify_csv(
     collections: list[dict],
+    *,
+    test_run: bool = False,
 ) -> io.BytesIO:
-    """Export Shopify bulk import CSV (Matrixify-compatible)."""
+    """Export Shopify bulk import CSV (Matrixify-compatible).
+
+    When ``test_run`` is True, a ``# TEST RUN OUTPUT — NOT FOR CLIENT DELIVERY``
+    comment header is prepended along with a generation-timestamp line.
+    Matrixify ignores ``#``-prefixed lines, so the import still works while
+    the file is unmistakably labelled.
+    """
     rows = []
     for col in collections:
         content = col.get("content", {})
@@ -193,6 +201,13 @@ def export_shopify_csv(
 
     df = pd.DataFrame(rows)
     buffer = io.BytesIO()
+    if test_run:
+        ts = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        header = (
+            "# TEST RUN OUTPUT — NOT FOR CLIENT DELIVERY\n"
+            f"# Generated on {ts}\n"
+        )
+        buffer.write(header.encode("utf-8"))
     df.to_csv(buffer, index=False)
     buffer.seek(0)
     return buffer

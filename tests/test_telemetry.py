@@ -69,3 +69,48 @@ class TestTimed:
         assert payload["status"] == "error"
         assert payload["error"] == "boom"
         assert payload["error_type"] == "RuntimeError"
+
+
+class TestCorrelationAndSampling:
+    def test_log_event_emits_correlation_id_when_set(self):
+        with patch("sys.stdout", io.StringIO()) as buf:
+            log_event("bifrost_call", correlation_id="abc123", model="m")
+        payload = json.loads(buf.getvalue().strip())
+        assert payload["correlation_id"] == "abc123"
+
+    def test_log_event_omits_correlation_id_when_empty(self):
+        with patch("sys.stdout", io.StringIO()) as buf:
+            log_event("bifrost_call", model="m")
+        payload = json.loads(buf.getvalue().strip())
+        assert "correlation_id" not in payload
+
+    def test_new_correlation_id_is_unique_hex(self):
+        from core.telemetry import new_correlation_id
+        a = new_correlation_id()
+        b = new_correlation_id()
+        assert a != b
+        assert len(a) == 12
+        int(a, 16)  # parses as hex
+
+    def test_sample_rate_zero_silences_output(self, monkeypatch):
+        monkeypatch.setenv("TELEMETRY_SAMPLE_RATE", "0")
+        with patch("sys.stdout", io.StringIO()) as buf:
+            for _ in range(20):
+                log_event("x", value=1)
+        assert buf.getvalue() == ""
+
+    def test_sample_rate_one_emits_everything(self, monkeypatch):
+        monkeypatch.setenv("TELEMETRY_SAMPLE_RATE", "1.0")
+        with patch("sys.stdout", io.StringIO()) as buf:
+            for _ in range(5):
+                log_event("x", value=1)
+        assert buf.getvalue().count("\n") == 5
+
+    def test_timed_propagates_correlation_id(self):
+        with patch("sys.stdout", io.StringIO()) as buf:
+            with timed("op", correlation_id="trace-1", model="m"):
+                pass
+        payload = json.loads(buf.getvalue().strip())
+        assert payload["correlation_id"] == "trace-1"
+        assert payload["model"] == "m"
+        assert payload["status"] == "ok"

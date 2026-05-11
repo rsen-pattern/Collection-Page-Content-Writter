@@ -8,3 +8,6 @@ build/
 *.egg
 .venv/
 venv/
+
+# Cross-run content cache — local disk only, never committed.
+data/content_cache/
