@@ -211,3 +211,43 @@ class TestClearWipState:
     def test_reset_wip_state_alias(self):
         app, _ = _import_app()
         assert app.reset_wip_state is app.clear_wip_state
+
+
+class TestSaveStatePreservesTypes:
+    """save_state must NOT destroy item references in list[Any]/dict[str, Any] fields.
+
+    Regression test for the AttributeError that hit the Data Input page after
+    Process Data: model_dump+model_validate round-trip was converting
+    list[CollectionGroup] items into plain dicts, breaking `g.collection_name`
+    attribute access on the next render.
+    """
+
+    def test_collection_group_instances_survive_save_state(self):
+        app, _ = _import_app()
+        from core.data_ingestion import CollectionGroup
+        state = app.get_state()
+        state.collection_groups = [
+            CollectionGroup(
+                collection_url="https://x.com/collections/y",
+                collection_name="Y",
+                primary_keyword="y",
+            )
+        ]
+        app.save_state(state)
+        new = app.get_state()
+        assert type(new.collection_groups[0]).__name__ == "CollectionGroup"
+        # Attribute access still works after the save round-trip.
+        assert new.collection_groups[0].collection_name == "Y"
+
+    def test_dict_coercion_to_subtyped_field_still_works(self):
+        """When a page assigns a dict to client_profile (Brand Profile apply
+        path) save_state should still coerce it to a ClientProfile."""
+        app, _ = _import_app()
+        state = app.get_state()
+        state.client_profile = {"brand_name": "X", "faq_count": 5}
+        app.save_state(state)
+        new = app.get_state()
+        from core.session_state import ClientProfile
+        assert isinstance(new.client_profile, ClientProfile)
+        assert new.client_profile.brand_name == "X"
+        assert new.client_profile.faq_count == 5
