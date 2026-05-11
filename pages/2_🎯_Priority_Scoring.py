@@ -267,13 +267,26 @@ if "Full Run" in mode:
             st.rerun()
 
 # ── Sub-collection opportunities indexed per parent for inline badges ─────
-opps_for_badges = identify_sub_collection_opportunities(
-    st.session_state.collection_groups
-)
-opps_by_parent: dict[str, list[dict]] = {}
-for _opp in opps_for_badges:
-    opps_by_parent.setdefault(_opp["parent_url"], []).append(_opp)
-st.session_state.sub_collection_opportunities = opps_by_parent
+# Cached so the (potentially expensive) modifier scan doesn't run on every
+# checkbox click. Invalidated when the underlying collection set changes.
+def _opps_cache_key(collection_groups) -> str:
+    import hashlib
+    urls = sorted(g.collection_url for g in collection_groups)
+    return hashlib.sha256("|".join(urls).encode()).hexdigest()[:16]
+
+_current_opps_key = _opps_cache_key(st.session_state.collection_groups)
+_cached_opps_key = st.session_state.get("_opps_cache_key", "")
+if _current_opps_key != _cached_opps_key:
+    opps_for_badges = identify_sub_collection_opportunities(
+        st.session_state.collection_groups
+    )
+    opps_by_parent: dict[str, list[dict]] = {}
+    for _opp in opps_for_badges:
+        opps_by_parent.setdefault(_opp["parent_url"], []).append(_opp)
+    st.session_state.sub_collection_opportunities = opps_by_parent
+    st.session_state._opps_cache_key = _current_opps_key
+else:
+    opps_by_parent = st.session_state.sub_collection_opportunities or {}
 
 batch_selections = []
 for i, sc in enumerate(scored):

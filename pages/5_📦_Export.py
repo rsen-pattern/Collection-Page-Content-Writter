@@ -25,6 +25,25 @@ batch = st.session_state.batch_collections
 content = st.session_state.generated_content
 client = st.session_state.client_profile
 
+
+def _is_test_run() -> bool:
+    return (st.session_state.get("batch_mode") or "").startswith("🧪 Test Run")
+
+
+def _filename(base: str) -> str:
+    """Prefix Test Run exports so they can't be mistaken for client deliverables."""
+    return f"TESTRUN_{base}" if _is_test_run() else base
+
+
+_TEST_RUN_BANNER_TEXT = "⚠️ TEST RUN OUTPUT — NOT FOR CLIENT DELIVERY ⚠️"
+
+if _is_test_run():
+    st.error(
+        "**Test Run mode is active.** Exports are watermarked with a "
+        "`TESTRUN_` filename prefix and inline labels. Switch the batch "
+        "mode to Standard or Full Run when you're ready to ship client work."
+    )
+
 # Prepare export data
 export_collections = []
 for col in batch:
@@ -87,7 +106,7 @@ if source_format == "keyword_map":
         st.download_button(
             label="Download Round-Trip Keyword Map",
             data=buffer,
-            file_name=f"keyword_map_optimized_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            file_name=_filename(f"keyword_map_optimized_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx"),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     st.markdown("---")
@@ -102,7 +121,7 @@ with ec1:
         st.download_button(
             label="Download Keyword Map",
             data=buffer,
-            file_name=f"keyword_map_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            file_name=_filename(f"keyword_map_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx"),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
@@ -114,7 +133,7 @@ with ec2:
         st.download_button(
             label="Download Content Delivery",
             data=buffer,
-            file_name=f"content_delivery_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            file_name=_filename(f"content_delivery_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx"),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
@@ -127,11 +146,11 @@ with ec3:
         type="primary" if source_format != "keyword_map" else "secondary",
         key="export_shopify_btn",
     ):
-        buffer = export_shopify_csv(export_collections)
+        buffer = export_shopify_csv(export_collections, test_run=_is_test_run())
         st.download_button(
             label="Download Shopify CSV",
             data=buffer,
-            file_name=f"shopify_import_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
+            file_name=_filename(f"shopify_import_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv"),
             mime="text/csv",
         )
 
@@ -154,7 +173,7 @@ if all_alt:
     st.download_button(
         "🖼️ Download alt-text suggestions",
         data=alt_buf,
-        file_name=f"alt_text_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        file_name=_filename(f"alt_text_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx"),
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     st.markdown("---")
@@ -198,7 +217,7 @@ if _all_subops:
     st.download_button(
         "📥 Download sub-collection opportunities CSV",
         data=_csv_buf,
-        file_name=f"sub_collection_opportunities_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
+        file_name=_filename(f"sub_collection_opportunities_{client.get('brand_name', 'export').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv"),
         mime="text/csv",
     )
     st.markdown("---")
@@ -214,6 +233,8 @@ for card in cards:
         continue
 
     with st.expander(f"📋 {card['collection_name']}", expanded=False):
+        if _is_test_run():
+            st.error(_TEST_RUN_BANNER_TEXT)
         st.markdown(f"**URL:** {card['collection_url']}")
 
         # SEO Title

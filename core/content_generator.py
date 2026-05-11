@@ -479,6 +479,7 @@ def _call_bifrost(
     system_prompt: str,
     user_prompt: str,
     generation_type: str = "",
+    correlation_id: str = "",
 ) -> str:
     """Make a single call to Bifrost and return the response text."""
     from core.telemetry import log_event
@@ -497,6 +498,7 @@ def _call_bifrost(
     except Exception as e:
         log_event(
             "bifrost_call",
+            correlation_id=correlation_id,
             model=model,
             generation_type=generation_type,
             duration_ms=int((_time.monotonic() - _t0) * 1000),
@@ -506,6 +508,7 @@ def _call_bifrost(
         raise
     log_event(
         "bifrost_call",
+        correlation_id=correlation_id,
         model=model,
         generation_type=generation_type,
         duration_ms=int((_time.monotonic() - _t0) * 1000),
@@ -554,6 +557,9 @@ def humanize_content(
     )
     user_prompt = build_humanizer_prompt(content_text, brand_name, voice_notes)
 
+    from core.telemetry import log_event, new_correlation_id
+    corr_id = new_correlation_id()
+
     fallback_chain = get_fallback_chain()
     models_to_try = [model] + [m for m in fallback_chain if m != model]
 
@@ -566,10 +572,18 @@ def humanize_content(
             response_text = _call_bifrost(
                 client, attempt_model, system_prompt, user_prompt,
                 generation_type="humanize",
+                correlation_id=corr_id,
             )
             used_model = attempt_model
             break
         except Exception as e:
+            log_event(
+                "model_attempt_failed",
+                correlation_id=corr_id,
+                model=attempt_model,
+                error=str(e)[:200],
+                generation_type="humanize",
+            )
             last_error = e
             continue
 
@@ -580,11 +594,12 @@ def humanize_content(
         )
 
     if used_model != model:
-        from core.telemetry import log_event
         log_event(
             "model_fallback",
-            attempted=model,
-            succeeded=used_model,
+            correlation_id=corr_id,
+            selected_model=model,
+            succeeded_model=used_model,
+            attempts=models_to_try.index(used_model) + 1,
             error=str(last_error) if last_error else "",
             generation_type="humanize",
         )
@@ -643,6 +658,9 @@ def generate_content(
     else:
         raise ValueError(f"Unknown generation type: {generation_type}")
 
+    from core.telemetry import log_event, new_correlation_id
+    corr_id = new_correlation_id()
+
     # Build attempt order: selected model first, then fallback chain
     fallback_chain = get_fallback_chain()
     models_to_try = [model] + [m for m in fallback_chain if m != model]
@@ -656,10 +674,18 @@ def generate_content(
             response_text = _call_bifrost(
                 client, attempt_model, system_prompt, user_prompt,
                 generation_type=generation_type,
+                correlation_id=corr_id,
             )
             used_model = attempt_model
             break
         except Exception as e:
+            log_event(
+                "model_attempt_failed",
+                correlation_id=corr_id,
+                model=attempt_model,
+                error=str(e)[:200],
+                generation_type=generation_type,
+            )
             last_error = e
             continue
 
@@ -670,11 +696,12 @@ def generate_content(
         )
 
     if used_model != model:
-        from core.telemetry import log_event
         log_event(
             "model_fallback",
-            attempted=model,
-            succeeded=used_model,
+            correlation_id=corr_id,
+            selected_model=model,
+            succeeded_model=used_model,
+            attempts=models_to_try.index(used_model) + 1,
             error=str(last_error) if last_error else "",
             generation_type=generation_type,
         )
