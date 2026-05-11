@@ -524,6 +524,99 @@ if state.collection_groups:
 
     st.markdown("---")
 
+    # --- Site Keyword Data ---
+    st.markdown("### Site Keyword Data (optional)")
+    st.markdown(
+        "Upload a domain-wide keyword export from **SEMrush**, **Ahrefs**, or "
+        "**Brightedge** to detect cannibalisation risks (multiple URLs ranking "
+        "for the same keyword) and surface new keyword opportunities in the "
+        "Content Studio."
+    )
+
+    _site_kw_file = st.file_uploader(
+        "Domain keyword export (CSV / XLSX)",
+        type=["csv", "xlsx", "xls"],
+        key="site_kw_uploader",
+        help=(
+            "Expected columns: Keyword, URL (or Current URL / Landing Page), "
+            "Search Volume, Position (or Current position / Rank). "
+            "Traffic is optional."
+        ),
+    )
+
+    _current_corpus_dict = state.site_keywords or None
+    if _current_corpus_dict:
+        from core.site_keywords import SiteKeywordCorpus as _SKC
+        _existing = _SKC.from_dict(_current_corpus_dict)
+        st.caption(
+            f"✅ Loaded — {_existing.total_rows:,} rows · "
+            f"{_existing.unique_keywords:,} unique keywords · "
+            f"{_existing.unique_urls:,} unique URLs "
+            f"({_existing.source_format})"
+        )
+        if st.button("Clear site keyword data", key="clear_site_kw"):
+            state.site_keywords = {}
+            state.site_cannibalisation = {}
+            save_state(state)
+            st.rerun()
+
+    if _site_kw_file is not None:
+        from core.data_ingestion import read_upload as _read_upload
+        from core.site_keywords import (
+            detect_site_format as _detect_site_format,
+            parse_site_keywords as _parse_site_keywords,
+            find_all_cannibalisation as _find_cannib,
+            SiteKeywordCorpus as _SKC,
+        )
+
+        try:
+            _raw_site_df = _read_upload(_site_kw_file)
+        except Exception as e:
+            st.error(f"Couldn't read site keyword file: {e}")
+            _raw_site_df = None
+
+        if _raw_site_df is not None:
+            _detected_fmt = _detect_site_format(_raw_site_df)
+            _vendor_label = {
+                "semrush": "SEMrush",
+                "ahrefs": "Ahrefs",
+                "brightedge": "Brightedge",
+                "custom": "Custom / unknown",
+            }.get(_detected_fmt, _detected_fmt)
+            st.info(f"Detected vendor: **{_vendor_label}** ({len(_raw_site_df)} rows)")
+
+            with st.expander("Raw site keyword preview", expanded=False):
+                st.dataframe(_raw_site_df.head(20), width="stretch")
+
+            if st.button("Process site keyword data", type="secondary", key="process_site_kw"):
+                with st.spinner(f"Parsing {len(_raw_site_df)} rows…"):
+                    _corpus = _parse_site_keywords(_raw_site_df, source_format=_detected_fmt)
+                if _corpus.error and _corpus.total_rows == 0:
+                    st.error(f"Parse failed: {_corpus.error}")
+                else:
+                    if _corpus.error:
+                        st.warning(_corpus.error)
+                    # Detect cannibalisation conflicts up-front so other
+                    # pages can read them without re-running detection.
+                    _conflicts = _find_cannib(state.collection_groups, _corpus)
+                    state.site_keywords = _corpus.to_dict()
+                    state.site_cannibalisation = {
+                        c.keyword: [
+                            {**u, "kind": c.kind, "search_volume": c.search_volume}
+                            for u in c.urls
+                        ]
+                        for c in _conflicts
+                    }
+                    save_state(state)
+                    st.success(
+                        f"Loaded {_corpus.total_rows:,} rows "
+                        f"({_corpus.unique_keywords:,} unique keywords). "
+                        f"Detected **{len(_conflicts)}** cannibalisation conflicts."
+                    )
+                    st.rerun()
+
+    st.markdown("---")
+
     # --- Product scraping ---
     st.markdown("### Shopify Product Scraper (optional)")
     st.markdown(

@@ -292,16 +292,46 @@ if _current_opps_key != _cached_opps_key:
 else:
     opps_by_parent = state.sub_collection_opportunities or {}
 
+# ── Cannibalisation conflicts indexed per URL ────────────────────────────
+# Build a per-URL lookup so each scored row can show its conflicts inline.
+_cannib_map = state.site_cannibalisation or {}
+_conflicts_by_url: dict[str, list[dict]] = {}
+for _kw, _conflict_urls in _cannib_map.items():
+    for _entry in _conflict_urls:
+        _conflicts_by_url.setdefault(_entry.get("url", ""), []).append({
+            "keyword": _kw,
+            "kind": _entry.get("kind", "top_10_overlap"),
+            "position": _entry.get("position"),
+            "search_volume": _entry.get("search_volume", 0),
+            "other_urls": [
+                u.get("url") for u in _conflict_urls if u.get("url") != _entry.get("url")
+            ],
+        })
+
+if _cannib_map:
+    st.info(
+        f"⚠️ **{len(_cannib_map)} cannibalisation conflict(s)** detected "
+        "from the site keyword data. Affected collections are flagged below."
+    )
+
 batch_selections = []
 for i, sc in enumerate(scored):
     _opps_for_row = opps_by_parent.get(sc.collection_url, [])
-    _badge = (
+    _conflicts_for_row = _conflicts_by_url.get(sc.collection_url, [])
+    _opp_badge = (
         f" 💡 {len(_opps_for_row)} sub-opp{'s' if len(_opps_for_row) != 1 else ''}"
         if _opps_for_row
         else ""
     )
+    _cannib_badge = (
+        f" ⚠️ {len(_conflicts_for_row)} cannibalisation conflict"
+        f"{'s' if len(_conflicts_for_row) != 1 else ''}"
+        if _conflicts_for_row
+        else ""
+    )
     selected = st.checkbox(
-        f"{sc.collection_name} (Score: {sc.total_score}/18, Vol: {sc.total_volume:,}){_badge}",
+        f"{sc.collection_name} (Score: {sc.total_score}/18, Vol: {sc.total_volume:,})"
+        f"{_opp_badge}{_cannib_badge}",
         value=sc.in_batch,
         key=f"batch_{i}",
     )
@@ -310,6 +340,33 @@ for i, sc in enumerate(scored):
         with st.expander(f"💡 Sub-collection ideas for {sc.collection_name}", expanded=False):
             for _opp in _opps_for_row:
                 st.caption(f"• **{_opp['keyword']}** — {_opp['volume']:,} searches/mo")
+    if _conflicts_for_row:
+        with st.expander(
+            f"⚠️ Cannibalisation conflicts for {sc.collection_name}",
+            expanded=False,
+        ):
+            for _c in _conflicts_for_row:
+                _kind_label = {
+                    "primary_overlap": "primary keyword shared",
+                    "top_10_overlap": "top-10 SERP overlap",
+                    "primary_and_top10": "primary keyword + top-10 SERP overlap",
+                }.get(_c["kind"], _c["kind"])
+                _pos_part = (
+                    f" · position {_c['position']:.0f}"
+                    if _c.get("position") is not None
+                    else ""
+                )
+                _vol_part = (
+                    f" · {_c['search_volume']:,} searches/mo"
+                    if _c.get("search_volume")
+                    else ""
+                )
+                st.markdown(
+                    f"• **{_c['keyword']}** — {_kind_label}{_pos_part}{_vol_part}"
+                )
+                if _c.get("other_urls"):
+                    for _other in _c["other_urls"]:
+                        st.caption(f"  ↳ also ranks: {_other}")
 
 selected_count = sum(batch_selections)
 
