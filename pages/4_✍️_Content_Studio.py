@@ -37,11 +37,16 @@ def _api_kwargs() -> dict:
 
 
 def _handle_result(result_tuple):
-    """Unpack (result, used_model) and show fallback info if needed."""
+    """Unpack (result, used_model) and show fallback info if needed.
+
+    Stashes used_model on session state so the snapshotting code can
+    label history entries with the model that actually produced them.
+    """
     result, used_model = result_tuple
     selected = st.session_state.get("selected_model", "")
     if used_model != selected:
         st.info(f"Fallback: used **{used_model}** (selected model failed)")
+    st.session_state["_last_used_model"] = used_model
     return result
 
 
@@ -110,8 +115,8 @@ for i, col in enumerate(batch):
     st.markdown("---")
     st.markdown(f"## {col['collection_name']}")
 
-    tab_brief, tab_desc, tab_faq, tab_titles, tab_meta, tab_headtags, tab_alt = st.tabs(
-        ["Brief", "Description", "FAQs", "Titles", "Meta", "Headings & Tags", "🖼️ Alt Text"]
+    tab_brief, tab_history, tab_desc, tab_faq, tab_titles, tab_meta, tab_headtags, tab_alt = st.tabs(
+        ["Brief", "📜 History", "Description", "FAQs", "Titles", "Meta", "Headings & Tags", "🖼️ Alt Text"]
     )
 
     with tab_brief:
@@ -202,6 +207,7 @@ for i, col in enumerate(batch):
                         "approved": False,
                     }
                     # Humanizer pass if enabled
+                    humanized_flag = False
                     if st.session_state.get("humanize_enabled"):
                         with st.spinner("Humanizing content..."):
                             if generated["description"]:
@@ -212,6 +218,29 @@ for i, col in enumerate(batch):
                                     voice_notes=client.get("voice_notes", ""),
                                 )
                                 generated["description"] = h_text
+                                humanized_flag = True
+                    # Preserve history from any prior generation, then snapshot
+                    # the prior content (if meaningful) so the user can roll back.
+                    from core.generation_history import (
+                        append_snapshot, has_meaningful_content,
+                    )
+                    from datetime import datetime as _dt
+                    prior = st.session_state.generated_content.get(content_key) or {}
+                    generated["history"] = prior.get("history") or []
+                    if has_meaningful_content(prior):
+                        append_snapshot(
+                            generated,
+                            generation_type=prior.get("_generation_type", "full"),
+                            model_used=prior.get("_model_used", ""),
+                            humanized=bool(prior.get("_humanized")),
+                            timestamp=prior.get("_generated_at"),
+                        )
+                    # Tag the new content with the metadata that the NEXT
+                    # snapshot (on the next regenerate) will read.
+                    generated["_humanized"] = humanized_flag
+                    generated["_generated_at"] = _dt.utcnow().isoformat(timespec="seconds") + "Z"
+                    generated["_model_used"] = st.session_state.get("_last_used_model", "")
+                    generated["_generation_type"] = "full"
                     st.session_state.generated_content[content_key] = generated
                     for faq in result.faqs:
                         st.session_state.batch_faq_topics.append(faq.get("question", ""))
@@ -221,6 +250,41 @@ for i, col in enumerate(batch):
 
     if not content:
         continue
+
+    with tab_history:
+        from core.generation_history import restore_snapshot
+        history = content.get("history") or []
+        if not history:
+            st.info(
+                "No previous versions yet. Regenerate this content to start "
+                "building history."
+            )
+        else:
+            st.caption(
+                f"{len(history)} version{'s' if len(history) != 1 else ''} saved "
+                "(most recent first). Up to 10 entries retained per collection."
+            )
+            for h_idx, entry in enumerate(reversed(history)):
+                with st.container(border=True):
+                    hc1, hc2 = st.columns([4, 1])
+                    with hc1:
+                        st.markdown(f"**{entry.get('timestamp', '(no timestamp)')}**")
+                        st.caption(
+                            f"Type: `{entry.get('generation_type', '?')}` · "
+                            f"Model: `{entry.get('model_used') or '?'}` · "
+                            f"Humaniser: {'on' if entry.get('humanized') else 'off'}"
+                        )
+                        snapshot = entry.get("snapshot") or {}
+                        preview = (snapshot.get("description") or "")[:220]
+                        if preview:
+                            suffix = "…" if len(snapshot.get("description") or "") > 220 else ""
+                            st.markdown(f"_{preview}{suffix}_")
+                    with hc2:
+                        if st.button("⏪ Restore", key=f"restore_{i}_{h_idx}"):
+                            restore_snapshot(content, entry.get("snapshot") or {})
+                            st.session_state.generated_content[content_key] = content
+                            st.success("Restored.")
+                            st.rerun()
 
     with tab_desc:
         desc_text = st.text_area(
@@ -533,6 +597,7 @@ def _run_generate_all():
                         "suggested_tags": result.suggested_tags,
                         "approved": False,
                     }
+                    humanized_flag = False
                     if st.session_state.get("humanize_enabled") and generated["description"]:
                         with st.spinner(f"Humanizing {col['collection_name']}..."):
                             h_text, _ = humanize_content(
@@ -542,6 +607,26 @@ def _run_generate_all():
                                 voice_notes=client.get("voice_notes", ""),
                             )
                             generated["description"] = h_text
+                            humanized_flag = True
+                    # Snapshot the prior content (if any) before overwriting.
+                    from core.generation_history import (
+                        append_snapshot, has_meaningful_content,
+                    )
+                    from datetime import datetime as _dt
+                    prior = st.session_state.generated_content.get(bk) or {}
+                    generated["history"] = prior.get("history") or []
+                    if has_meaningful_content(prior):
+                        append_snapshot(
+                            generated,
+                            generation_type=prior.get("_generation_type", "full"),
+                            model_used=prior.get("_model_used", ""),
+                            humanized=bool(prior.get("_humanized")),
+                            timestamp=prior.get("_generated_at"),
+                        )
+                    generated["_humanized"] = humanized_flag
+                    generated["_generated_at"] = _dt.utcnow().isoformat(timespec="seconds") + "Z"
+                    generated["_model_used"] = st.session_state.get("_last_used_model", "")
+                    generated["_generation_type"] = "full"
                     st.session_state.generated_content[bk] = generated
                     for faq in result.faqs:
                         st.session_state.batch_faq_topics.append(faq.get("question", ""))

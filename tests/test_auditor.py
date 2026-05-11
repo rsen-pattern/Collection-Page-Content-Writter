@@ -123,3 +123,46 @@ class TestCategoryScores:
         categories = get_category_scores(result)
         assert len(categories) > 0
         assert all("passing" in v and "total" in v for v in categories.values())
+
+
+class TestReaudirDiff:
+    """Pure-logic test of the before/after delta computation.
+
+    The Audit page renders this comparison; the test verifies the same
+    logic against two synthesised AuditResult instances.
+    """
+
+    def _make_result(self, check_states: dict):
+        """Build an AuditResult from a {check_id: result_str} mapping."""
+        from core.auditor import AuditCheck, AuditResult
+        checks = [
+            AuditCheck(id=cid, label=f"Check {cid}", category="content", result=r)
+            for cid, r in check_states.items()
+        ]
+        passing = sum(1 for c in checks if c.result == "pass")
+        failing = sum(1 for c in checks if c.result == "fail")
+        return AuditResult(
+            collection_url="https://x.com/collections/y",
+            collection_name="Y",
+            checks=checks,
+            total_checks=len(checks),
+            passing=passing,
+            failing=failing,
+        )
+
+    def test_delta_counts_pass_changes(self):
+        before = self._make_result({"a": "pass", "b": "fail", "c": "fail"})
+        after = self._make_result({"a": "pass", "b": "pass", "c": "pass"})
+        assert after.passing - before.passing == 2
+
+    def test_per_check_diff_categories(self):
+        before = self._make_result({"a": "pass", "b": "fail", "c": "fail", "d": "pass"})
+        after = self._make_result({"a": "pass", "b": "pass", "c": "fail", "d": "fail"})
+        orig = {c.id: c for c in before.checks}
+        new = {c.id: c for c in after.checks}
+        fixed = [orig[k].label for k in orig if orig[k].result != "pass" and new[k].result == "pass"]
+        still_failing = [orig[k].label for k in orig if orig[k].result != "pass" and new[k].result != "pass"]
+        regressed = [orig[k].label for k in orig if orig[k].result == "pass" and new[k].result != "pass"]
+        assert fixed == ["Check b"]
+        assert still_failing == ["Check c"]
+        assert regressed == ["Check d"]

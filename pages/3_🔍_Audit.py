@@ -130,7 +130,7 @@ def _scraper_keys() -> dict:
 
 
 # ── Action bar — Scrape All + Run All Audits ──────────────────────────────────
-action_col1, action_col2, action_col3 = st.columns([2, 2, 3])
+action_col1, action_col2, action_col3, action_col4 = st.columns([2, 2, 2, 2])
 
 with action_col1:
     scrape_all_clicked = st.button(
@@ -150,6 +150,19 @@ with action_col2:
     )
 
 with action_col3:
+    _has_generated = bool(st.session_state.get("generated_content"))
+    reaudit_clicked = st.button(
+        "🔄 Re-audit with generated content",
+        type="secondary",
+        disabled=not _has_generated,
+        help=(
+            "Run the audit checklist against generated content (not the live page). "
+            "Useful for verifying the new copy passes the checks that the live page "
+            "failed. Stored separately from the original audit so you can compare."
+        ),
+    )
+
+with action_col4:
     est_time = max(1, round(len(batch) * 2 / 60, 1))
     st.caption(
         f"~{len(batch)} collections · Scrape ~{est_time} mins · Audit instant"
@@ -263,6 +276,52 @@ if run_all_audits_clicked:
         )
     else:
         st.success(f"Audit complete — {audits_run} collections audited.")
+    st.rerun()
+
+# ── Re-audit using generated content ──────────────────────────────────────────
+if reaudit_clicked:
+    generated_map = st.session_state.get("generated_content") or {}
+    progress = st.progress(0, text="Running audits on generated content...")
+    audits_run = 0
+    for idx, col in enumerate(batch):
+        url = col["collection_url"]
+        progress.progress(
+            idx / max(len(batch), 1),
+            text=f"Re-auditing {idx + 1}/{len(batch)}: {col['collection_name']}...",
+        )
+        generated = generated_map.get(url) or {}
+        if not any(generated.get(k) for k in ("seo_title", "collection_title", "description", "meta_description")):
+            continue
+        audit_data = CollectionAuditData(
+            collection_url=url,
+            collection_name=col["collection_name"],
+            primary_keyword=col["primary_keyword"],
+            seo_title=generated.get("seo_title", ""),
+            h1=generated.get("collection_title", ""),
+            description=generated.get("description", ""),
+            meta_description=generated.get("meta_description", ""),
+            brand_usps=st.session_state.client_profile.get("brand_usps", []),
+            url_handle=extract_collection_handle(url),
+        )
+        result = audit_collection(audit_data)
+        st.session_state.setdefault("audit_results_generated", {})[url] = {
+            "result": result,
+            "input": {
+                "seo_title": generated.get("seo_title", ""),
+                "h1": generated.get("collection_title", ""),
+                "description": generated.get("description", ""),
+                "meta_description": generated.get("meta_description", ""),
+            },
+        }
+        audits_run += 1
+    progress.progress(1.0, text="Done.")
+    if audits_run == 0:
+        st.warning(
+            "No generated content found for any collection in this batch. "
+            "Generate content in the Content Studio first."
+        )
+    else:
+        st.success(f"Re-audit complete — {audits_run} collections compared.")
     st.rerun()
 
 # ── Per-collection data input ─────────────────────────────────────────────────
@@ -471,6 +530,52 @@ for i, col in enumerate(batch):
 
             # Display results
             st.markdown(f"### Audit Score: {result.score_display}")
+
+            # Before/after comparison when a re-audit against generated
+            # content exists for this URL.
+            _regenerated = (
+                st.session_state.get("audit_results_generated", {}).get(url, {}).get("result")
+            )
+            if _regenerated is not None:
+                delta = _regenerated.passing - result.passing
+                delta_str = f"+{delta}" if delta > 0 else str(delta)
+                emoji = "🟢" if delta > 0 else ("🟡" if delta == 0 else "🔴")
+                st.markdown(
+                    f"{emoji} **Before:** {result.score_display} → "
+                    f"**After (generated):** {_regenerated.score_display} "
+                    f"({delta_str} checks)"
+                )
+                # Per-check diff: which checks moved from fail to pass, stayed
+                # failing, or regressed.
+                _orig_by_id = {c.id: c for c in result.checks}
+                _new_by_id = {c.id: c for c in _regenerated.checks}
+                fixed: list[str] = []
+                still_failing: list[str] = []
+                regressed: list[str] = []
+                for check_id, orig in _orig_by_id.items():
+                    new = _new_by_id.get(check_id)
+                    if new is None:
+                        continue
+                    if orig.result != "pass" and new.result == "pass":
+                        fixed.append(orig.label)
+                    elif orig.result != "pass" and new.result != "pass":
+                        still_failing.append(orig.label)
+                    elif orig.result == "pass" and new.result != "pass":
+                        regressed.append(orig.label)
+                if fixed or still_failing or regressed:
+                    with st.expander("Check-by-check diff", expanded=False):
+                        if fixed:
+                            st.markdown("**🟢 Fixed by regeneration:**")
+                            for label in fixed:
+                                st.markdown(f"- {label}")
+                        if still_failing:
+                            st.markdown("**🟡 Still failing:**")
+                            for label in still_failing:
+                                st.markdown(f"- {label}")
+                        if regressed:
+                            st.markdown("**🔴 Regressed:**")
+                            for label in regressed:
+                                st.markdown(f"- {label}")
 
             categories = get_category_scores(result)
             cat_cols = st.columns(len(categories))
