@@ -1,5 +1,93 @@
 # Changes
 
+## Update — Site keyword data + cannibalisation detection
+
+Adds an optional second data upload on Data Input — a domain-wide keyword
+export from **SEMrush**, **Ahrefs**, or **Brightedge**. Drives two new
+signals:
+
+1. **Cannibalisation detection** — keywords where multiple URLs ranked.
+   Two flavours:
+   - *Primary keyword overlap*: two or more collections in the current
+     batch share a primary keyword (detected from the per-collection data
+     alone, no upload needed).
+   - *Top-10 SERP overlap*: from the site keyword corpus, keywords where
+     ≥2 URLs rank in positions 1–10 (configurable range).
+   Surfaced on **Priority Scoring** as a `⚠️ N cannibalisation conflicts`
+   badge next to affected collections, with an inline expander listing the
+   conflicting keywords and competing URLs.
+
+2. **New keyword suggestions** — site-corpus keywords that already point
+   at a collection's URL (or share its `/collections/<handle>`) but aren't
+   in the brief yet. Surfaced on the **Content Studio Brief tab** as a
+   "🔑 N keyword suggestions from site data" expander so writers can pull
+   them into the secondary-keyword list.
+
+### Core
+
+- New `core/site_keywords.py` with:
+  - `SiteKeywordRow` / `SiteKeywordCorpus` dataclasses, JSON round-trip
+    via `to_dict` / `from_dict`.
+  - `detect_site_format(df)` — distinguishes SEMrush / Ahrefs / Brightedge
+    by their distinctive column headers (e.g. `Current URL` + `Current
+    position` → Ahrefs; `Landing Page` or `Average Rank` → Brightedge;
+    `Search Volume` + `URL` + `Position` → SEMrush).
+  - `parse_site_keywords(df)` — lenient parser; rows with no keyword or
+    URL are dropped silently, missing position/traffic tolerated.
+  - `find_primary_keyword_conflicts(collection_groups)` — pure per-
+    collection check, no upload required.
+  - `find_top_10_conflicts(corpus, min_position=1, max_position=10)` —
+    keyword-level overlap detection across the corpus.
+  - `find_all_cannibalisation(collection_groups, corpus)` — combines
+    both, deduplicates, marks "primary_and_top10" when a keyword surfaces
+    from both passes.
+  - `suggest_keywords_for_collection(url, corpus, existing_keywords)` —
+    new-keyword suggestions for the Content Studio.
+- `core/session_state.AppState` gained `site_keywords: dict` (parsed
+  corpus, serialised) and `site_cannibalisation: dict[str, list[dict]]`
+  (pre-computed conflicts keyed by keyword).
+
+### UI
+
+- **Data Input page**: new "Site Keyword Data (optional)" section just
+  before the Shopify scraper. Auto-detects vendor, shows a row count, and
+  parses on click. Successful upload runs cannibalisation detection
+  against the current `collection_groups` and stashes both the corpus and
+  the conflicts on session state.
+- **Priority Scoring page**: top-of-page info banner reports the total
+  conflict count. Each scored-collection checkbox now carries a
+  `⚠️ N cannibalisation conflict(s)` badge when relevant, with an inline
+  expander listing the conflicting keywords, the conflict kind (primary
+  vs top-10 vs both), search volume, position, and the competing URLs.
+- **Content Studio Brief tab**: new "🔑 N keyword suggestions from site
+  data" expander surfaces unassigned keywords for the active collection
+  with per-keyword search volume and SERP position.
+
+### Tests
+
+- `tests/test_site_keywords.py` (new) — 28 tests covering vendor format
+  detection, parsing (Ahrefs / SEMrush / Brightedge / missing columns /
+  empty rows), primary-keyword conflict detection, top-10 conflict
+  detection (range filtering, distinct URL requirement, same-URL
+  dedup), combined detection (primary_and_top10 merge), per-URL
+  filtering, and keyword suggestions (URL match, handle match,
+  existing-keyword filter, volume floor, max cap).
+
+**Files touched:** `core/site_keywords.py` (new),
+`core/session_state.py`, `pages/1_📊_Data_Input.py`,
+`pages/2_🎯_Priority_Scoring.py`, `pages/4_✍️_Content_Studio.py`,
+`tests/test_site_keywords.py` (new).
+
+### Constraints respected
+
+- No new pip dependencies — stdlib + already-vendored `pandas`.
+- Feature is optional throughout — every reference is guarded so
+  existing flows behave unchanged when no site keyword corpus is loaded.
+- Lenient parsing — unknown columns ignored, malformed rows dropped
+  silently, vendor falls back to "custom" rather than raising.
+
+---
+
 ## Update — Typed session state schema
 
 Replaces the flat ``st.session_state`` namespace with a Pydantic ``AppState``

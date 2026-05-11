@@ -235,6 +235,12 @@ class AppState(BaseModel):
 
     sub_collection_opportunities: dict[str, list[dict]] = Field(default_factory=dict)
 
+    # Optional site-wide keyword corpus (SEMrush / Ahrefs / Brightedge export).
+    # Drives cannibalisation detection and new-keyword suggestions when
+    # populated; entirely optional — pages must guard with truthiness checks.
+    site_keywords: dict = Field(default_factory=dict)
+    site_cannibalisation: dict[str, list[dict]] = Field(default_factory=dict)
+
     # ── Single URL Writer (its own WIP namespace) ───────────────────
     single_url_content: dict = Field(default_factory=dict)
     single_url_history: list[dict] = Field(default_factory=list)

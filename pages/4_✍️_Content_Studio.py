@@ -132,6 +132,51 @@ for i, col in enumerate(batch):
                 f"{faq_count} FAQs · {state_label}. "
                 "Use the tabs above to review and edit."
             )
+        # ── Site-keyword suggestions for this collection (optional) ────
+        # When a site-wide keyword corpus has been uploaded, surface any
+        # additional keywords this collection's URL ranks for that aren't
+        # already in the brief. The writer can pull them into the
+        # secondary-keyword list manually.
+        _site_kw_dict = state.site_keywords or None
+        if _site_kw_dict:
+            from core.site_keywords import (
+                SiteKeywordCorpus as _SKC,
+                suggest_keywords_for_collection as _suggest_kw,
+            )
+            try:
+                _corpus = _SKC.from_dict(_site_kw_dict)
+            except Exception:
+                _corpus = None
+            if _corpus is not None and _corpus.rows:
+                _existing_keywords = (
+                    [brief.primary_keyword] + list(brief.secondary_keywords)
+                )
+                _suggestions = _suggest_kw(
+                    brief.collection_url,
+                    _corpus,
+                    existing_keywords=_existing_keywords,
+                )
+                if _suggestions:
+                    with st.expander(
+                        f"🔑 {len(_suggestions)} keyword suggestion"
+                        f"{'s' if len(_suggestions) != 1 else ''} from site data",
+                        expanded=False,
+                    ):
+                        st.caption(
+                            "Keywords your site ranks for that aren't yet in this "
+                            "brief. Copy any you want to target into the Secondary "
+                            "Keywords list above."
+                        )
+                        for _s in _suggestions:
+                            _pos_part = (
+                                f" · position {_s.position:.0f}"
+                                if _s.position is not None
+                                else ""
+                            )
+                            st.markdown(
+                                f"- **{_s.keyword}** — {_s.search_volume:,} "
+                                f"searches/mo{_pos_part}"
+                            )
         bc1, bc2 = st.columns(2)
         with bc1:
             st.markdown(f"**Primary Keyword:** {brief.primary_keyword}")
