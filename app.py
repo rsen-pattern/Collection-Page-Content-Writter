@@ -69,140 +69,32 @@ def get_model_options():
 
 
 def get_secret(key: str, default: str = "") -> str:
-    """Get a value from st.secrets with fallback to default."""
-    try:
-        return st.secrets[key]
-    except (KeyError, FileNotFoundError, AttributeError):
-        return default
+    """Get a value from st.secrets with fallback to default.
+
+    Kept here as a thin re-export from core.app_state for any code that
+    imports it via ``from app import get_secret``.
+    """
+    from core.app_state import get_secret as _get_secret
+    return _get_secret(key, default)
 
 
-_STATE_KEY = "_app_state_v1"
-
-# Transient UI state — Streamlit-managed widget state and short-lived flags
-# that don't belong in AppState. Listed so clear_wip_state can sweep them.
-_TRANSIENT_UI_KEYS = (
-    "_bp_pending_sitemap",
-    "_bp_pending_sitemap_source_url",
-    "_bp_pending_extracted_bans",
-    "_bp_banned_phrases_merged",
-    "_bp_loaded",
-    "_single_prefill_name",
-    "_single_prefill_products",
-    "_single_prefill_related",
-    "_single_prefill_blogs",
-    "_single_scraped_products",
-    "_existing_top",
-    "_existing_bottom",
-    "_ai_diagnosis",
-    "_pending_generate_all",
-    "_pending_brand_switch",
-    "_last_used_model",
+# State-access helpers live in core/app_state.py because Streamlit runs the
+# entry script (this module) as __main__. Pages that do `from app import …`
+# would otherwise trigger a fresh import of app.py and re-run all the
+# module-level Streamlit calls (sidebar widgets), raising
+# StreamlitDuplicateElementKey. Re-exported here for backwards compatibility
+# with any external callers that already import from ``app``.
+from core.app_state import (  # noqa: E402  (intentional after st.set_page_config)
+    _STATE_KEY,
+    _TRANSIENT_UI_KEYS,
+    clear_wip_state,
+    get_state,
+    reset_wip_state,
+    save_state,
 )
 
 
-def get_state():
-    """Return the typed :class:`AppState` for this session.
-
-    Auto-migrates from the legacy flat-namespace shape on first call.
-    Always returns a valid AppState — never raises.
-    """
-    from core.session_state import AppState, parse_lenient
-
-    # New shape already in place — return it.
-    existing = st.session_state.get(_STATE_KEY)
-    if isinstance(existing, AppState):
-        return existing
-
-    # Legacy migration: any of these keys living at the top level means
-    # this session was started before the typed shape existed.
-    legacy_keys = {
-        "client_profile",
-        "raw_data",
-        "normalized_data",
-        "collection_groups",
-        "batch_collections",
-        "generated_content",
-        "bifrost_api_key",
-        "bifrost_base_url",
-        "selected_model",
-    }
-    present = [k for k in legacy_keys if k in st.session_state]
-    if present:
-        from core.telemetry import log_event
-        log_event("session_state_legacy_migration", source_keys_present=present)
-        raw = {
-            k: st.session_state[k]
-            for k in list(st.session_state.keys())
-            if k in AppState.model_fields
-        }
-        state = parse_lenient(raw)
-        st.session_state[_STATE_KEY] = state
-        # Drop legacy keys so reads can't split-brain across both shapes.
-        for k in list(st.session_state.keys()):
-            if k in AppState.model_fields:
-                del st.session_state[k]
-        return state
-
-    # Fresh session — build defaults from secrets where applicable.
-    state = AppState()
-    state.bifrost_api_key = get_secret("BIFROST_API_KEY") or get_secret("BIFROST_KEY")
-    state.bifrost_base_url = get_secret("BIFROST_BASE_URL", "https://bifrost.pattern.com")
-    state.selected_model = get_secret("BIFROST_DEFAULT_MODEL", "anthropic/claude-sonnet-4-6")
-    state.dataforseo_login = get_secret("DATAFORSEO_LOGIN")
-    state.dataforseo_password = get_secret("DATAFORSEO_PASSWORD")
-    state.webscraping_ai_key = get_secret("WEBSCRAPING_AI_KEY", "")
-    state.scraperapi_key = get_secret("SCRAPERAPI_KEY", "")
-    st.session_state[_STATE_KEY] = state
-    return state
-
-
-def save_state(state) -> None:
-    """Persist mutations made to the AppState. Runs invariant validators.
-
-    Pages must call this after mutating fields. Failing to call save_state
-    after a mutation means the next get_state() will return the unsaved
-    version only within the same script run — across reruns, mutations to
-    mutable fields (lists, dicts) are still visible because Python
-    references are shared, but invariants haven't been re-checked.
-    """
-    from core.session_state import AppState
-
-    try:
-        validated = AppState.model_validate(state.model_dump())
-        st.session_state[_STATE_KEY] = validated
-    except Exception as e:
-        from core.telemetry import log_event
-        log_event("session_state_save_failed", error=str(e)[:200])
-        # Keep the unvalidated state rather than losing user work.
-        st.session_state[_STATE_KEY] = state
-
-
-def clear_wip_state() -> None:
-    """Reset all work-in-progress fields to defaults.
-
-    Preserves credentials, the selected model, and the active brand profile
-    (anything in :data:`core.session_state.PERSISTENT_FIELDS`). Also drops
-    transient UI keys (``_pending_brand_switch``, ``_bp_pending_sitemap``,
-    etc.) since they belong to the outgoing brand.
-    """
-    from core.session_state import AppState, PERSISTENT_FIELDS
-
-    current = get_state()
-    preserved = {
-        name: getattr(current, name) for name in PERSISTENT_FIELDS
-    }
-    fresh = AppState(**preserved)
-    st.session_state[_STATE_KEY] = fresh
-
-    for key in _TRANSIENT_UI_KEYS:
-        st.session_state.pop(key, None)
-
-
-# Backwards-compatible alias.
-reset_wip_state = clear_wip_state
-
-
-# Prime the session on import so module-level reads in pages don't crash.
+# Prime the session on entry so module-level reads in pages don't crash.
 get_state()
 
 

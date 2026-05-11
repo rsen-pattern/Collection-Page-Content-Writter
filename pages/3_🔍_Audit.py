@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from app import get_state, save_state
+from core.app_state import get_state, save_state
 from core.scraper import (
     scrape_collection_page,
     scrape_with_fallback,

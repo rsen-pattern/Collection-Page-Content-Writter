@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 
-from app import get_state, save_state
+from core.app_state import get_state, save_state
 
 
 st.title("Step 5: Export & Implementation Tracking")

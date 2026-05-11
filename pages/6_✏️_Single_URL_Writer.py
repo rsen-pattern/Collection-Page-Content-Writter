@@ -3,7 +3,7 @@
 import re
 import streamlit as st
 
-from app import get_state, save_state
+from core.app_state import get_state, save_state
 from core.text_utils import clean_keyword
 
 

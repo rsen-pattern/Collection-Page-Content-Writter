@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from app import get_state, save_state, clear_wip_state
+from core.app_state import get_state, save_state, clear_wip_state
 from core.brand_profile import (
     BrandProfile,
     BrandPromptOverrides,

@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 
-from app import get_state, save_state
+from core.app_state import get_state, save_state
 
 
 st.title("Step 2: Priority Scoring & Batch Planning")
