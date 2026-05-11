@@ -2,6 +2,7 @@
 
 import streamlit as st
 
+from app import get_state, save_state, clear_wip_state
 from core.brand_profile import (
     BrandProfile,
     BrandPromptOverrides,
@@ -89,6 +90,7 @@ st.markdown("---")
 
 # ─── Build current profile from session or loaded ───────────────────────
 
+state = get_state()
 _loaded: BrandProfile = st.session_state.get("_bp_loaded", BrandProfile())
 
 _render_sitemap_banner(_loaded)
@@ -170,7 +172,7 @@ with extract_col:
 
 if extract_clicked:
     from core.feedback_extractor import extract_banned_phrases
-    api_key = st.session_state.get("bifrost_api_key", "") or st.session_state.get("api_key", "")
+    api_key = state.bifrost_api_key or st.session_state.get("api_key", "")
     if not api_key:
         st.error("Bifrost API key not set. Add it on the Home page first.")
     else:
@@ -466,23 +468,29 @@ with sc2:
         }
 
     def _apply_brand_payload(payload: dict) -> None:
-        st.session_state.client_profile = payload["client_profile"]
-        st.session_state["prompt_overrides"] = payload["prompt_overrides"]
+        from core.session_state import ClientProfile, PromptOverrides
+        # Re-fetch state so we always write to the current instance —
+        # clear_wip_state replaces the AppState on the brand-switch path,
+        # which would invalidate any closure-captured reference.
+        current = get_state()
+        current.client_profile = ClientProfile.model_validate(payload["client_profile"])
+        current.prompt_overrides = PromptOverrides.model_validate(payload["prompt_overrides"])
         # Apply the brand's humaniser default to the session toggle so the
         # Content Studio picks it up on first render.
-        st.session_state["humanize_enabled"] = bool(
+        current.humanize_enabled = bool(
             payload["client_profile"].get("humanize_by_default", False)
         )
         # Push sitemap into session so Data Input + Single URL Writer can pick it up.
         pending_sm = st.session_state.get("_bp_pending_sitemap")
         if pending_sm is not None:
-            st.session_state["sitemap_parsed"] = pending_sm.to_dict()
+            current.sitemap_parsed = pending_sm.to_dict()
         elif _loaded.sitemap_parsed:
-            st.session_state["sitemap_parsed"] = _loaded.sitemap_parsed
+            current.sitemap_parsed = _loaded.sitemap_parsed
+        save_state(current)
 
     if st.button("📋 Apply to Session", help="Load this profile's settings into the Content Studio session"):
         has_wip = any(
-            st.session_state.get(k)
+            getattr(state, k)
             for k in (
                 "collection_groups",
                 "scored_collections",
@@ -503,18 +511,18 @@ def _summarise_wip() -> list[str]:
     """Return a human-readable inventory of what's currently in WIP state."""
     lines = []
 
-    collections = st.session_state.get("collection_groups") or []
+    collections = state.collection_groups or []
     if collections:
-        upload_format = st.session_state.get("source_format") or "unknown format"
+        upload_format = state.source_format or "unknown format"
         lines.append(
             f"- **{len(collections)} collections** from uploaded data ({upload_format})"
         )
 
-    batch = st.session_state.get("batch_collections") or []
+    batch = state.batch_collections or []
     if batch:
         lines.append(f"- **{len(batch)} collections** in current batch")
 
-    generated = st.session_state.get("generated_content") or {}
+    generated = state.generated_content or {}
     if generated:
         approved_count = sum(1 for c in generated.values() if c.get("approved"))
         lines.append(
@@ -522,16 +530,16 @@ def _summarise_wip() -> list[str]:
             f"({approved_count} approved)"
         )
 
-    audits = st.session_state.get("audit_results") or {}
+    audits = state.audit_results or {}
     if audits:
         lines.append(f"- **{len(audits)} audit results**")
 
-    single = st.session_state.get("single_url_content") or {}
+    single = state.single_url_content or {}
     if single:
         name = single.get("collection_name", "unnamed")
         lines.append(f"- 1 Single URL Writer draft (*{name}*)")
 
-    tracker = st.session_state.get("implementation_tracker") or {}
+    tracker = state.implementation_tracker or {}
     if tracker:
         lines.append(f"- **{len(tracker)} implementation-tracker entries**")
 
@@ -554,9 +562,8 @@ if st.session_state.get("_pending_brand_switch"):
     _bs1, _bs2 = st.columns(2)
     with _bs1:
         if st.button("✅ Clear and switch", type="primary", key="confirm_brand_switch"):
-            from app import reset_wip_state
             payload = st.session_state.pop("_pending_brand_switch")
-            reset_wip_state()
+            clear_wip_state()
             _apply_brand_payload(payload)
             st.success("Switched to new brand.")
             st.rerun()

@@ -207,26 +207,31 @@ class AppState(BaseModel):
     source_format: str = ""
     source_keyword_width: int = 4
 
-    collection_groups: list[CollectionGroupModel] = Field(default_factory=list)
+    # Mutated heavily by pages — kept as ``list[Any]`` so in-place writes
+    # don't suffer an in-session type drift between assignment and save_state.
+    # The sub-models (CollectionGroupModel etc.) remain in the schema for
+    # documentation and helper conversions; validation happens at the
+    # container's edges, not inside.
+    collection_groups: list[Any] = Field(default_factory=list)
     skipped_collections: list[Any] = Field(default_factory=list)
 
     scored_collections: list[Any] = Field(default_factory=list)
 
-    batch_collections: list[BatchCollectionEntry] = Field(default_factory=list)
+    batch_collections: list[Any] = Field(default_factory=list)
     batch_mode: str = ""
     batch_faq_topics: list[str] = Field(default_factory=list)
 
-    audit_results: dict[str, AuditEntry] = Field(default_factory=dict)
-    audit_results_generated: dict[str, AuditEntry] = Field(default_factory=dict)
+    audit_results: dict[str, Any] = Field(default_factory=dict)
+    audit_results_generated: dict[str, Any] = Field(default_factory=dict)
     scrape_results: dict[str, Any] = Field(default_factory=dict)
     scrape_tiers: dict[str, str] = Field(default_factory=dict)
-    scrape_all_attempts: dict[str, dict] = Field(default_factory=dict)
+    scrape_all_attempts: dict[str, Any] = Field(default_factory=dict)
     sf_crawl_data: dict[str, Any] = Field(default_factory=dict)
 
     content_briefs: dict[str, Any] = Field(default_factory=dict)
-    generated_content: dict[str, GeneratedContent] = Field(default_factory=dict)
+    generated_content: dict[str, Any] = Field(default_factory=dict)
 
-    implementation_tracker: dict[str, ImplementationTrackerEntry] = Field(default_factory=dict)
+    implementation_tracker: dict[str, Any] = Field(default_factory=dict)
 
     sub_collection_opportunities: dict[str, list[dict]] = Field(default_factory=dict)
 
@@ -268,9 +273,18 @@ class AppState(BaseModel):
 
         Doesn't drop entries — sometimes generated content is held over from
         a prior batch on purpose (e.g. cache lookup). Just surfaces drift.
+        Tolerates batch entries shaped as either dicts or pydantic models.
         """
         if self.generated_content and self.batch_collections:
-            batch_urls = {b.collection_url for b in self.batch_collections}
+            batch_urls: set[str] = set()
+            for entry in self.batch_collections:
+                url = (
+                    entry.get("collection_url")
+                    if isinstance(entry, dict)
+                    else getattr(entry, "collection_url", "")
+                )
+                if url:
+                    batch_urls.add(url)
             orphan_count = sum(
                 1 for url in self.generated_content if url not in batch_urls
             )
@@ -284,9 +298,17 @@ class AppState(BaseModel):
 
     @model_validator(mode="after")
     def _check_audit_results_have_result(self) -> "AppState":
-        """Drop audit_results entries with ``result=None`` — they came from
-        a partial migration and would crash the renderer."""
-        bad_keys = [k for k, v in self.audit_results.items() if v.result is None]
+        """Drop audit_results entries that are missing a result.
+
+        Tolerates entries shaped as either dicts or pydantic models so the
+        invariant survives the dict/model boundary inside pages.
+        """
+        def _has_result(entry) -> bool:
+            if isinstance(entry, dict):
+                return entry.get("result") is not None
+            return getattr(entry, "result", None) is not None
+
+        bad_keys = [k for k, v in self.audit_results.items() if not _has_result(v)]
         for k in bad_keys:
             log_event(
                 "session_state_invariant_violated",

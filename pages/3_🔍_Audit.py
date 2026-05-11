@@ -3,6 +3,7 @@
 import pandas as pd
 import streamlit as st
 
+from app import get_state, save_state
 from core.scraper import (
     scrape_collection_page,
     scrape_with_fallback,
@@ -18,7 +19,9 @@ from core.text_utils import extract_collection_handle
 
 st.title("Step 3: Automated Audit")
 
-if not st.session_state.get("batch_collections"):
+state = get_state()
+
+if not state.batch_collections:
     st.warning("No batch selected. Please complete Step 2 first.")
     st.stop()
 
@@ -29,7 +32,10 @@ from core.auditor import (
     get_category_scores,
 )
 
-batch = st.session_state.batch_collections
+batch = state.batch_collections
+# Expose client_profile as a dict so existing `.get("brand_usps", [])` calls
+# downstream keep working without per-call branching.
+client_profile_dict = state.client_profile.model_dump()
 
 # ── Skip Audit option ─────────────────────────────────────────────────────────
 st.info(
@@ -59,7 +65,7 @@ with st.expander("📂 Upload Screaming Frog Crawl Data (optional)", expanded=Fa
         try:
             sf_df = pd.read_csv(sf_file)
             sf_data = parse_screaming_frog_csv(sf_df)
-            st.session_state.sf_crawl_data = sf_data
+            state.sf_crawl_data = sf_data
             st.success(
                 f"Loaded {len(sf_data)} pages from SF crawl. "
                 "Pre-flight flags and field pre-population are now active below."
@@ -68,9 +74,9 @@ with st.expander("📂 Upload Screaming Frog Crawl Data (optional)", expanded=Fa
             st.error(str(e))
         except Exception as e:
             st.error(f"Failed to parse SF CSV: {e}")
-    elif st.session_state.get("sf_crawl_data"):
+    elif state.sf_crawl_data:
         st.caption(
-            f"SF data already loaded — {len(st.session_state.sf_crawl_data)} pages. "
+            f"SF data already loaded — {len(state.sf_crawl_data)} pages. "
             "Upload a new file to replace it."
         )
 
@@ -85,31 +91,31 @@ with st.expander("🔑 Scraper API Keys", expanded=False):
     st.markdown("**WebScraping.AI** — 2,000 free credits/month")
     wsai_input = st.text_input(
         "WebScraping.AI API Key",
-        value=st.session_state.get("webscraping_ai_key", ""),
+        value=state.webscraping_ai_key,
         type="password",
         key="wsai_key_input",
         placeholder="Paste your key from webscraping.ai dashboard",
     )
-    if wsai_input != st.session_state.get("webscraping_ai_key", ""):
-        st.session_state.webscraping_ai_key = wsai_input
+    if wsai_input != state.webscraping_ai_key:
+        state.webscraping_ai_key = wsai_input
 
     st.markdown("---")
 
     st.markdown("**ScraperAPI** — 1,000 free credits/month")
     sapi_input = st.text_input(
         "ScraperAPI Key",
-        value=st.session_state.get("scraperapi_key", ""),
+        value=state.scraperapi_key,
         type="password",
         key="sapi_key_input",
         placeholder="Paste your key from scraperapi.com dashboard",
     )
-    if sapi_input != st.session_state.get("scraperapi_key", ""):
-        st.session_state.scraperapi_key = sapi_input
+    if sapi_input != state.scraperapi_key:
+        state.scraperapi_key = sapi_input
 
     active_tiers = ["Direct requests"]
-    if st.session_state.get("webscraping_ai_key"):
+    if state.webscraping_ai_key:
         active_tiers.append("WebScraping.AI")
-    if st.session_state.get("scraperapi_key"):
+    if state.scraperapi_key:
         active_tiers.append("ScraperAPI")
     st.caption(f"Active fallback tiers: {', '.join(active_tiers)}")
 
@@ -124,8 +130,8 @@ st.markdown(
 
 def _scraper_keys() -> dict:
     return {
-        "webscraping_ai_key": st.session_state.get("webscraping_ai_key", ""),
-        "scraperapi_key": st.session_state.get("scraperapi_key", ""),
+        "webscraping_ai_key": state.webscraping_ai_key,
+        "scraperapi_key": state.scraperapi_key,
     }
 
 
@@ -150,7 +156,7 @@ with action_col2:
     )
 
 with action_col3:
-    _has_generated = bool(st.session_state.get("generated_content"))
+    _has_generated = bool(state.generated_content)
     reaudit_clicked = st.button(
         "🔄 Re-audit with generated content",
         type="secondary",
@@ -172,7 +178,7 @@ with action_col4:
 if scrape_all_clicked:
     progress = st.progress(0, text="Starting scrape...")
     scrape_results = {}
-    scrape_tiers = st.session_state.get("scrape_tiers", {})
+    scrape_tiers = state.scrape_tiers
     for idx, col in enumerate(batch):
         url = col["collection_url"]
         progress.progress(
@@ -184,8 +190,8 @@ if scrape_all_clicked:
         scrape_tiers[url] = fallback.tier_used
     progress.progress(1.0, text="Scrape complete.")
 
-    st.session_state.scrape_results = scrape_results
-    st.session_state.scrape_tiers = scrape_tiers
+    state.scrape_results = scrape_results
+    state.scrape_tiers = scrape_tiers
 
     # Write scraped values directly into widget session state keys so that
     # Streamlit renders them on the next rerun. Without this, Streamlit ignores
@@ -212,6 +218,7 @@ if scrape_all_clicked:
             f"Scraped {success_count} pages successfully. "
             f"{fail_count} failed — check individual collections below."
         )
+    save_state(state)
     st.rerun()
 
 # ── Run All Audits handler ────────────────────────────────────────────────────
@@ -234,7 +241,7 @@ if run_all_audits_clicked:
         meta_desc = st.session_state.get(f"audit_meta_{idx}", "")
 
         # Fall back to previously saved audit input if widget keys are empty.
-        saved_input = st.session_state.audit_results.get(url, {}).get("input", {})
+        saved_input = state.audit_results.get(url, {}).get("input", {})
         seo_title = seo_title or saved_input.get("seo_title", "")
         h1 = h1 or saved_input.get("h1", "")
         description = description or saved_input.get("description", "")
@@ -251,12 +258,12 @@ if run_all_audits_clicked:
             h1=h1,
             description=description,
             meta_description=meta_desc,
-            brand_usps=st.session_state.client_profile.get("brand_usps", []),
+            brand_usps=state.client_profile.brand_usps or [],
             url_handle=extract_collection_handle(url),
         )
 
         result = audit_collection(audit_data)
-        st.session_state.audit_results[url] = {
+        state.audit_results[url] = {
             "result": result,
             "input": {
                 "seo_title": seo_title,
@@ -276,11 +283,12 @@ if run_all_audits_clicked:
         )
     else:
         st.success(f"Audit complete — {audits_run} collections audited.")
+    save_state(state)
     st.rerun()
 
 # ── Re-audit using generated content ──────────────────────────────────────────
 if reaudit_clicked:
-    generated_map = st.session_state.get("generated_content") or {}
+    generated_map = state.generated_content or {}
     progress = st.progress(0, text="Running audits on generated content...")
     audits_run = 0
     for idx, col in enumerate(batch):
@@ -300,11 +308,11 @@ if reaudit_clicked:
             h1=generated.get("collection_title", ""),
             description=generated.get("description", ""),
             meta_description=generated.get("meta_description", ""),
-            brand_usps=st.session_state.client_profile.get("brand_usps", []),
+            brand_usps=state.client_profile.brand_usps or [],
             url_handle=extract_collection_handle(url),
         )
         result = audit_collection(audit_data)
-        st.session_state.setdefault("audit_results_generated", {})[url] = {
+        state.audit_results_generated[url] = {
             "result": result,
             "input": {
                 "seo_title": generated.get("seo_title", ""),
@@ -322,10 +330,11 @@ if reaudit_clicked:
         )
     else:
         st.success(f"Re-audit complete — {audits_run} collections compared.")
+    save_state(state)
     st.rerun()
 
 # ── Per-collection data input ─────────────────────────────────────────────────
-sf_crawl_data = st.session_state.get("sf_crawl_data", {})
+sf_crawl_data = state.sf_crawl_data or {}
 
 _tier_labels = {
     "direct": "direct",
@@ -339,8 +348,8 @@ for i, col in enumerate(batch):
         st.markdown(f"**URL:** {url}")
         st.markdown(f"**Primary Keyword:** {col['primary_keyword']}")
 
-        scrape_result = st.session_state.get("scrape_results", {}).get(url)
-        tier_used = st.session_state.get("scrape_tiers", {}).get(url, "")
+        scrape_result = state.scrape_results.get(url)
+        tier_used = state.scrape_tiers.get(url, "")
 
         btn_col, status_col = st.columns([1, 4])
         with btn_col:
@@ -362,13 +371,13 @@ for i, col in enumerate(batch):
         if scrape_clicked:
             with st.spinner(f"Scraping {col['collection_name']}..."):
                 fallback = scrape_with_fallback(url, **_scraper_keys())
-                results = st.session_state.get("scrape_results", {})
+                results = state.scrape_results
                 results[url] = fallback.data
-                st.session_state.scrape_results = results
-                st.session_state.setdefault("scrape_tiers", {})[url] = fallback.tier_used
+                state.scrape_results = results
+                state.scrape_tiers[url] = fallback.tier_used
                 # Stash every tier's attempt so the user can manually pick
                 # a partial result when no tier hit the >=2-field threshold.
-                st.session_state.setdefault("scrape_all_attempts", {})[url] = fallback.all_attempts
+                state.scrape_all_attempts[url] = fallback.all_attempts
 
                 # Write to widget keys so fields visibly populate on rerun.
                 result = fallback.data
@@ -381,12 +390,13 @@ for i, col in enumerate(batch):
                         st.session_state[f"audit_meta_{i}"] = result.meta_description
                     if result.description:
                         st.session_state[f"audit_desc_{i}"] = result.description
+            save_state(state)
             st.rerun()
 
         # ── Partial-result manual selector ────────────────────────────────
         # When the best automatic pick was poor, let the user inspect each
         # tier's attempt and apply the one they prefer.
-        _attempts = st.session_state.get("scrape_all_attempts", {}).get(url) or {}
+        _attempts = state.scrape_all_attempts.get(url) or {}
         _show_selector = (
             scrape_result is not None
             and (tier_used == "failed" or scrape_result.fields_found < 2)
@@ -410,10 +420,10 @@ for i, col in enumerate(batch):
                         st.markdown(" · ".join(summary_parts))
                     with btn_col:
                         if st.button("Use this", key=f"use_tier_{i}_{tier_name}"):
-                            results = st.session_state.get("scrape_results", {})
+                            results = state.scrape_results
                             results[url] = tier_data
-                            st.session_state.scrape_results = results
-                            st.session_state.setdefault("scrape_tiers", {})[url] = tier_name
+                            state.scrape_results = results
+                            state.scrape_tiers[url] = tier_name
                             if tier_data.seo_title:
                                 st.session_state[f"audit_seo_title_{i}"] = tier_data.seo_title
                             if tier_data.h1:
@@ -422,6 +432,7 @@ for i, col in enumerate(batch):
                                 st.session_state[f"audit_meta_{i}"] = tier_data.meta_description
                             if tier_data.description:
                                 st.session_state[f"audit_desc_{i}"] = tier_data.description
+                            save_state(state)
                             st.rerun()
 
         # ── Pre-flight flags from SF data ─────────────────────────────────────
@@ -459,7 +470,7 @@ for i, col in enumerate(batch):
                 if sf_val:
                     return str(sf_val)
             return (
-                st.session_state.audit_results
+                state.audit_results
                 .get(_url, {})
                 .get("input", {})
                 .get(field_key, "")
@@ -513,12 +524,12 @@ for i, col in enumerate(batch):
                 meta_description=meta_desc,
                 linked_from_homepage=True if linked_homepage == "Yes" else (False if linked_homepage == "No" else None),
                 linked_from_blog=True if linked_blog == "Yes" else (False if linked_blog == "No" else None),
-                brand_usps=st.session_state.client_profile.get("brand_usps", []),
+                brand_usps=state.client_profile.brand_usps or [],
                 url_handle=extract_collection_handle(col["collection_url"]),
             )
 
             result = audit_collection(audit_data)
-            st.session_state.audit_results[col["collection_url"]] = {
+            state.audit_results[col["collection_url"]] = {
                 "result": result,
                 "input": {
                     "seo_title": seo_title,
@@ -527,6 +538,7 @@ for i, col in enumerate(batch):
                     "meta_description": meta_desc,
                 },
             }
+            save_state(state)
 
             # Display results
             st.markdown(f"### Audit Score: {result.score_display}")
@@ -534,7 +546,7 @@ for i, col in enumerate(batch):
             # Before/after comparison when a re-audit against generated
             # content exists for this URL.
             _regenerated = (
-                st.session_state.get("audit_results_generated", {}).get(url, {}).get("result")
+                state.audit_results_generated.get(url, {}).get("result")
             )
             if _regenerated is not None:
                 delta = _regenerated.passing - result.passing
@@ -608,16 +620,16 @@ for i, col in enumerate(batch):
 st.markdown("---")
 st.markdown("## Audit Summary")
 
-if st.session_state.audit_results:
-    total_audited = len(st.session_state.audit_results)
+if state.audit_results:
+    total_audited = len(state.audit_results)
     total_passing = sum(
         data["result"].passing
-        for data in st.session_state.audit_results.values()
+        for data in state.audit_results.values()
         if "result" in data
     )
     total_failing = sum(
         data["result"].failing
-        for data in st.session_state.audit_results.values()
+        for data in state.audit_results.values()
         if "result" in data
     )
     not_audited = len(batch) - total_audited
@@ -630,7 +642,7 @@ if st.session_state.audit_results:
 
     st.markdown("---")
 
-    for url, data in st.session_state.audit_results.items():
+    for url, data in state.audit_results.items():
         if "result" not in data:
             continue
         result = data["result"]

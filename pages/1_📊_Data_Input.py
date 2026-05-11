@@ -8,26 +8,25 @@ column mapping. The user can review and apply with one click.
 import streamlit as st
 import pandas as pd
 
+from app import get_state, save_state
+
 
 st.title("Step 1: Data Input")
 
-# Ensure session state is initialized
-if "client_profile" not in st.session_state:
-    st.warning("Please start from the main page to initialize the app.")
-    st.stop()
+state = get_state()
 
 # --- 1.1 Brand Profile status banner ---
-cp = st.session_state.get("client_profile", {})
-if not cp.get("brand_name"):
+cp = state.client_profile
+if not cp.brand_name:
     st.warning("⚠️ No brand profile loaded.")
     st.page_link("pages/0_🏷️_Brand_Profile.py", label="→ Set up brand profile", icon="🏷️")
     st.stop()
 else:
-    st.success(f"Active brand: **{cp['brand_name']}** · {len(cp.get('brand_usps', []))} USPs")
+    st.success(f"Active brand: **{cp.brand_name}** · {len(cp.brand_usps or [])} USPs")
     st.page_link("pages/0_🏷️_Brand_Profile.py", label="Edit brand profile", icon="🏷️")
 
 # Sitemap status — surfaces whether smart link suggestions are active.
-_sitemap_dict = st.session_state.get("sitemap_parsed")
+_sitemap_dict = state.sitemap_parsed or None
 if _sitemap_dict:
     from core.sitemap import ParsedSitemap as _PS
 
@@ -165,7 +164,7 @@ if uploaded_file is not None:
                 "Most columns have generic names like `Unnamed: 0`, which usually means "
                 "the header row is buried below blank rows or a title banner."
             )
-            api_key = st.session_state.get("bifrost_api_key", "")
+            api_key = state.bifrost_api_key
 
             adc1, adc2 = st.columns([1, 4])
             with adc1:
@@ -187,7 +186,7 @@ if uploaded_file is not None:
                     diagnosis = diagnose_file(
                         api_key=api_key,
                         raw_df=raw_df,
-                        base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
+                        base_url=state.bifrost_base_url or "https://bifrost.pattern.com",
                     )
                 st.session_state["_ai_diagnosis"] = diagnosis
                 st.rerun()
@@ -240,11 +239,11 @@ if uploaded_file is not None:
                             if diagnosis.get("format") == "wide":
                                 groups, skipped, info = apply_wide_mapping(df, diagnosis["mapping"])
                                 if groups:
-                                    st.session_state.normalized_data = pd.DataFrame()
-                                    st.session_state.source_format = "keyword_map"  # treat as wide
-                                    st.session_state.collection_groups = groups
-                                    st.session_state.skipped_collections = skipped
-                                    st.session_state.raw_data = raw_df
+                                    state.normalized_data = pd.DataFrame()
+                                    state.source_format = "keyword_map"  # treat as wide
+                                    state.collection_groups = groups
+                                    state.skipped_collections = skipped
+                                    state.raw_data = raw_df
                                     st.success(
                                         f"Applied AI mapping. Loaded **{len(groups)} collections** "
                                         f"({len(skipped)} skipped)."
@@ -258,6 +257,7 @@ if uploaded_file is not None:
                                             f"won't find products until you fill in real URLs."
                                         )
                                     st.session_state.pop("_ai_diagnosis", None)
+                                    save_state(state)
                                     st.rerun()
                                 else:
                                     st.error(
@@ -274,16 +274,17 @@ if uploaded_file is not None:
                                     if mask.any():
                                         normalized = normalized[mask].copy()
                                 groups = group_by_collection(normalized)
-                                st.session_state.normalized_data = normalized
-                                st.session_state.source_format = "custom"
-                                st.session_state.collection_groups = groups
-                                st.session_state.skipped_collections = []
-                                st.session_state.raw_data = raw_df
+                                state.normalized_data = normalized
+                                state.source_format = "custom"
+                                state.collection_groups = groups
+                                state.skipped_collections = []
+                                state.raw_data = raw_df
                                 st.success(
                                     f"Applied AI mapping. Loaded **{len(groups)} collections** "
                                     f"from {len(normalized)} keyword rows."
                                 )
                                 st.session_state.pop("_ai_diagnosis", None)
+                                save_state(state)
                                 st.rerun()
 
             st.markdown("---")
@@ -305,18 +306,19 @@ if uploaded_file is not None:
                     groups, skipped = normalize_keyword_map(raw_df)
                     # Record the input's keyword column width so the
                     # round-trip exporter mirrors the source schema.
-                    st.session_state.source_keyword_width = (
+                    state.source_keyword_width = (
                         max(len(g.secondary_keywords) + 1 for g in groups) if groups else 4
                     )
 
                 no_kw_count = sum(1 for s in skipped if s.reason == "no_keywords")
                 zero_vol_count = sum(1 for s in skipped if s.reason == "zero_volume")
 
-                st.session_state.normalized_data = pd.DataFrame()
-                st.session_state.source_format = source_format
-                st.session_state.collection_groups = groups
-                st.session_state.skipped_collections = skipped
-                st.session_state.raw_data = raw_df
+                state.normalized_data = pd.DataFrame()
+                state.source_format = source_format
+                state.collection_groups = groups
+                state.skipped_collections = skipped
+                state.raw_data = raw_df
+                save_state(state)
 
                 st.success(
                     f"Loaded **{len(groups)} collections**. "
@@ -426,11 +428,12 @@ if uploaded_file is not None:
 
                     groups = group_by_collection(normalized)
 
-                st.session_state.normalized_data = normalized
-                st.session_state.source_format = source_format
-                st.session_state.collection_groups = groups
-                st.session_state.skipped_collections = []
-                st.session_state.raw_data = raw_df
+                state.normalized_data = normalized
+                state.source_format = source_format
+                state.collection_groups = groups
+                state.skipped_collections = []
+                state.raw_data = raw_df
+                save_state(state)
 
                 st.success(f"Processed {len(normalized)} keywords into {len(groups)} collections")
 
@@ -438,13 +441,13 @@ if uploaded_file is not None:
         st.error(f"Error processing file: {e}")
 
 # --- 1.3 Keyword-to-Collection Grouping ---
-if st.session_state.collection_groups:
+if state.collection_groups:
     st.markdown("---")
     st.markdown("## Keyword-to-Collection Grouping")
-    st.markdown(f"**{len(st.session_state.collection_groups)} collections** identified")
+    st.markdown(f"**{len(state.collection_groups)} collections** identified")
 
     # Keyword Mapping format: show summary preview table before expanders
-    if st.session_state.get("source_format") == "keyword_map":
+    if state.source_format == "keyword_map":
         preview_rows = [
             {
                 "Collection Name": g.collection_name,
@@ -452,18 +455,18 @@ if st.session_state.collection_groups:
                 "Primary Volume": g.primary_keyword_volume or 0,
                 "Secondary Keywords": len(g.secondary_keywords),
             }
-            for g in st.session_state.collection_groups
+            for g in state.collection_groups
         ]
         st.dataframe(pd.DataFrame(preview_rows), width="stretch")
 
     # Build set of zero-volume URLs for inline warnings
     zero_vol_urls = {
         s.collection_url
-        for s in st.session_state.get("skipped_collections", [])
+        for s in state.skipped_collections or []
         if s.reason == "zero_volume"
     }
 
-    for i, group in enumerate(st.session_state.collection_groups):
+    for i, group in enumerate(state.collection_groups):
         zero_vol_flag = " ⚠️ zero volume" if group.collection_url in zero_vol_urls else ""
         with st.expander(
             f"{group.collection_name} — {group.primary_keyword} "
@@ -503,7 +506,8 @@ if st.session_state.collection_groups:
                 if primary_idx != 0:
                     from core.text_utils import clean_keyword as _clean
                     new_primary = _clean(all_keywords[primary_idx])
-                    st.session_state.collection_groups[i].primary_keyword = new_primary
+                    state.collection_groups[i].primary_keyword = new_primary
+                    save_state(state)
 
             with gc2:
                 st.markdown("**Secondary Keywords:**")
@@ -534,7 +538,7 @@ if st.session_state.collection_groups:
         from core.sitemap import ParsedSitemap as _PS, find_related_urls as _find
 
         # Build sitemap once if available — used as a fallback per-collection.
-        _sm_dict = st.session_state.get("sitemap_parsed")
+        _sm_dict = state.sitemap_parsed or None
         _sm_obj = None
         if _sm_dict:
             try:
@@ -546,7 +550,7 @@ if st.session_state.collection_groups:
         status_msg = st.empty()
         scraped_count = 0
         sitemap_fallback_count = 0
-        groups = st.session_state.collection_groups
+        groups = state.collection_groups
         for i, col in enumerate(groups):
             col_url = col.collection_url
             status_msg.text(f"Fetching {col.collection_name}…")

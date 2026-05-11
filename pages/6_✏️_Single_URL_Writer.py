@@ -3,22 +3,19 @@
 import re
 import streamlit as st
 
+from app import get_state, save_state
 from core.text_utils import clean_keyword
 
 
 st.title("Single URL Content Writer")
 st.markdown("Generate optimized content for a single collection page — no CSV upload or batch workflow needed.")
 
-# --- Session state init ---
-if "single_url_content" not in st.session_state:
-    st.session_state.single_url_content = {}
-if "single_url_history" not in st.session_state:
-    st.session_state.single_url_history = []
+state = get_state()
 
 # --- Sidebar: Previous URLs ---
 with st.sidebar:
     st.markdown("### Previous URLs")
-    for item in st.session_state.single_url_history:
+    for item in state.single_url_history:
         st.caption(f"• {item['collection_name']}")
 
 st.markdown("---")
@@ -63,7 +60,7 @@ with col_left:
             st.session_state["_single_scraped_products"] = [p.model_dump() for p in scrape_result.products]
 
             # If a brand-profile sitemap is loaded, pre-fill related collections + blog posts.
-            _sm_dict = st.session_state.get("sitemap_parsed")
+            _sm_dict = state.sitemap_parsed or None
             if _sm_dict and scrape_result.h1:
                 from core.sitemap import ParsedSitemap as _PS, find_related_urls as _find
                 try:
@@ -230,7 +227,7 @@ paa_questions = [q.strip() for q in paa_text.strip().split("\n") if q.strip()]
 
 # Validation
 required_filled = all([collection_url, collection_name, primary_keyword, brand_name, len(brand_usps) >= 2])
-has_api_key = bool(st.session_state.get("bifrost_api_key"))
+has_api_key = bool(state.bifrost_api_key)
 
 if not required_filled:
     missing = []
@@ -301,7 +298,7 @@ if st.button(
         existing_content_text.strip(),
     ]))
 
-    cp = st.session_state.get("client_profile", {})
+    cp = state.client_profile.model_dump()
     brief = build_brief(
         collection_url=collection_url,
         collection_name=collection_name,
@@ -320,28 +317,28 @@ if st.button(
         keyword_difficulty=float(keyword_difficulty),
         existing_content=combined_existing,
         past_feedback=cp.get("past_feedback", ""),
-        prompt_overrides=st.session_state.get("prompt_overrides", {}),
+        prompt_overrides=state.prompt_overrides.model_dump(),
     )
 
     with st.spinner("Generating content..."):
         try:
             result, used_model = generate_content(
-                api_key=st.session_state.bifrost_api_key,
-                base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
-                model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
+                api_key=state.bifrost_api_key,
+                base_url=state.bifrost_base_url or "https://bifrost.pattern.com",
+                model=state.selected_model or "anthropic/claude-sonnet-4-6",
                 brief=brief,
                 generation_type=type_map[generation_type],
             )
-            selected = st.session_state.get("selected_model", "")
+            selected = state.selected_model or ""
             if used_model != selected:
                 st.info(f"Fallback: used **{used_model}** (selected model failed)")
             # Humanizer pass if enabled
             if humanize_single and result.description:
                 with st.spinner("Humanizing content..."):
                     h_text, h_model = humanize_content(
-                        api_key=st.session_state.bifrost_api_key,
-                        base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
-                        model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
+                        api_key=state.bifrost_api_key,
+                        base_url=state.bifrost_base_url or "https://bifrost.pattern.com",
+                        model=state.selected_model or "anthropic/claude-sonnet-4-6",
                         content_text=result.description,
                         brand_name=brand_name,
                         voice_notes=voice_notes,
@@ -349,7 +346,7 @@ if st.button(
                     result.description = h_text
                     if h_model != selected:
                         st.info(f"Humanizer fallback: used **{h_model}**")
-            st.session_state.single_url_content = {
+            state.single_url_content = {
                 "seo_title": result.seo_title,
                 "collection_title": result.collection_title,
                 "description": result.description,
@@ -365,11 +362,12 @@ if st.button(
                 "brand_name": brand_name,
             }
             # Track history
-            if not any(h["collection_url"] == collection_url for h in st.session_state.single_url_history):
-                st.session_state.single_url_history.append({
+            if not any(h["collection_url"] == collection_url for h in state.single_url_history):
+                state.single_url_history.append({
                     "collection_url": collection_url,
                     "collection_name": collection_name,
                 })
+            save_state(state)
             st.rerun()
         except Exception as e:
             st.error(f"Generation failed: {e}")
@@ -377,7 +375,7 @@ if st.button(
 # ============================================================
 # 4. REVIEW, EDIT & VALIDATE
 # ============================================================
-content = st.session_state.single_url_content
+content = state.single_url_content
 
 if content:
     st.markdown("---")
@@ -440,9 +438,9 @@ if content:
                 with st.spinner("Humanizing..."):
                     try:
                         h_text, h_model = _humanize(
-                            api_key=st.session_state.bifrost_api_key,
-                            base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
-                            model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
+                            api_key=state.bifrost_api_key,
+                            base_url=state.bifrost_base_url or "https://bifrost.pattern.com",
+                            model=state.selected_model or "anthropic/claude-sonnet-4-6",
                             content_text=desc,
                             brand_name=content.get("brand_name", ""),
                             voice_notes="",
