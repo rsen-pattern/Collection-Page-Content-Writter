@@ -1,5 +1,84 @@
 # Changes
 
+## Update — Typed session state schema
+
+Replaces the flat ``st.session_state`` namespace with a Pydantic ``AppState``
+model. Pages now access state via ``get_state()`` and persist mutations via
+``save_state()``.
+
+**Why:** New contributors couldn't tell what shape ``generated_content[url]``
+should have without reading every page that wrote it. The contract was
+implicit and growing. Past 5-6 pages with significant business logic, this
+becomes a real maintenance tax. A typed schema makes the contract
+discoverable in one file.
+
+### What changed
+
+- New ``core/session_state.py`` with the ``AppState`` root model and
+  documentation-grade sub-models (``ClientProfile``, ``PromptOverrides``,
+  ``CollectionGroupModel``, ``BatchCollectionEntry``, ``FAQItem``,
+  ``GeneratedContent``, ``GenerationHistoryEntry``, ``AuditEntry``,
+  ``AuditInputSnapshot``, ``ImplementationTrackerEntry``).
+  ``PERSISTENT_FIELDS`` frozenset documents which fields survive a brand
+  switch — everything else is WIP by default.
+- ``app.py`` gains ``get_state()``, ``save_state()``, and ``clear_wip_state()``.
+  Legacy ``init_session_state`` / ``WIP_DEFAULT_FACTORIES`` removed; the
+  registry is derived from ``AppState`` itself. Backwards-compat shim
+  emits ``DeprecationWarning`` for any code that still imports the old
+  names.
+- Auto-migration from the flat shape — transparent to users; emits
+  ``session_state_legacy_migration`` telemetry on first read.
+- Three cross-field invariants (lenient: log + coerce, never raise):
+  ``batch_without_collections`` clears orphaned batches,
+  ``orphan_generated_content`` surfaces drift but keeps data,
+  ``audit_missing_result`` drops audit entries without an underlying
+  AuditResult.
+- All 7 pages migrated to the typed access pattern: app.py home_page +
+  sidebar, Brand Profile, Data Input, Priority Scoring, Audit, Content
+  Studio, Export, Single URL Writer.
+- Widget keys and transient UI flags continue to live directly on
+  ``st.session_state`` — Streamlit's contract, not ours.
+- Sidebar gains a ``SHOW_DEBUG=true`` env-gated debug expander that
+  dumps the current AppState as JSON for migration-health visibility.
+- README gains a "Session state architecture" section explaining the
+  read/write contract.
+
+### Tests
+
+- ``tests/test_session_state.py`` (new) — 17 tests: empty defaults,
+  per-instance isolation, ``parse_lenient`` happy path + field-by-field
+  recovery, every invariant, every conversion helper.
+- ``tests/test_app.py`` rewritten for the new API: fresh session
+  returns ``AppState``, ``get_state`` is idempotent, secrets populate
+  on first init, legacy migration sweeps flat keys and removes them,
+  ``save_state`` runs invariants + swallows validation failures,
+  ``clear_wip_state`` preserves credentials and drops transient UI
+  keys, ``reset_wip_state`` alias still works.
+
+### Validation mode
+
+Lenient throughout. Bugs surface as telemetry events
+(``session_state_invariant_violated``, ``session_state_field_coerced``,
+``session_state_save_failed``) rather than crashes.
+
+### Breaking changes
+
+None at runtime — auto-migration is transparent. Code-level: imports
+of ``init_session_state``, ``WIP_DEFAULT_FACTORIES``, or
+``PERSISTENT_SESSION_KEYS`` from ``app`` now emit ``DeprecationWarning``
+and return shim values. Remove the shim in a later release once any
+external callers are updated.
+
+**Files touched:** ``core/session_state.py`` (new), ``app.py``,
+``pages/0_🏷️_Brand_Profile.py``, ``pages/1_📊_Data_Input.py``,
+``pages/2_🎯_Priority_Scoring.py``, ``pages/3_🔍_Audit.py``,
+``pages/4_✍️_Content_Studio.py``, ``pages/5_📦_Export.py``,
+``pages/6_✏️_Single_URL_Writer.py``,
+``tests/test_session_state.py`` (new), ``tests/test_app.py``,
+``README.md``.
+
+---
+
 ## Update — Post-merge upgrade (debt, precision, loops, architecture)
 
 Fourteen items from a review of the recent text_utils / sub-collection /

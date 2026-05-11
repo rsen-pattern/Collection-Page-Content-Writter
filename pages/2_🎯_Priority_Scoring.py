@@ -3,10 +3,14 @@
 import streamlit as st
 import pandas as pd
 
+from app import get_state, save_state
+
 
 st.title("Step 2: Priority Scoring & Batch Planning")
 
-if not st.session_state.get("collection_groups"):
+state = get_state()
+
+if not state.collection_groups:
     st.warning("No collection data found. Please complete Step 1 first.")
     st.stop()
 
@@ -16,7 +20,7 @@ from core.priority_scorer import (
 )
 from core.sf_parser import derive_optimization_score, derive_nav_link_signal
 
-source_format = st.session_state.get("source_format", "")
+source_format = state.source_format or ""
 volume_only = source_format == "keyword_map"
 
 HELP_TEXT = {
@@ -86,11 +90,11 @@ if volume_only:
 # --- 2.1 Auto-Scoring ---
 st.markdown("## Collection Scoring")
 
-if not st.session_state.get("scored_collections") or st.button("Re-score Collections", help="Re-run the scoring engine over all collections. Useful after editing keyword data or applying new crawl data."):
-    scored = score_all_collections(st.session_state.collection_groups, volume_only=volume_only)
+if not state.scored_collections or st.button("Re-score Collections", help="Re-run the scoring engine over all collections. Useful after editing keyword data or applying new crawl data."):
+    scored = score_all_collections(state.collection_groups, volume_only=volume_only)
 
     # ── Apply SF-derived scores where crawl data is available ────────────────
-    sf_crawl_data = st.session_state.get("sf_crawl_data", {})
+    sf_crawl_data = state.sf_crawl_data or {}
     sf_overrides_applied = 0
     if sf_crawl_data:
         for sc in scored:
@@ -113,9 +117,9 @@ if not st.session_state.get("scored_collections") or st.button("Re-score Collect
                 "Homepage Nav Link updated where signal was conclusive."
             )
 
-    st.session_state.scored_collections = scored
+    state.scored_collections = scored
 
-scored = st.session_state.scored_collections
+scored = state.scored_collections
 
 if not scored:
     st.info("No collections to score.")
@@ -229,7 +233,7 @@ with st.expander("Adjust individual factor scores", expanded=volume_only):
             st.caption(f"⚠️ Defaulted: {'; '.join(missing_signals)}")
 
     # Re-sort after overrides
-    st.session_state.scored_collections.sort(
+    state.scored_collections.sort(
         key=lambda s: s.total_score, reverse=True
     )
 
@@ -246,7 +250,7 @@ mode = st.radio(
 )
 
 if "Test Run" in mode:
-    _model_label = st.session_state.get("selected_model", "default model")
+    _model_label = state.selected_model or "default model"
     st.info(
         f"🧪 **Test Run mode** — limited to 2 collections. Uses your selected model "
         f"(`{_model_label}`). Switch to Standard Batch or Full Run when you're ready to scale."
@@ -274,19 +278,19 @@ def _opps_cache_key(collection_groups) -> str:
     urls = sorted(g.collection_url for g in collection_groups)
     return hashlib.sha256("|".join(urls).encode()).hexdigest()[:16]
 
-_current_opps_key = _opps_cache_key(st.session_state.collection_groups)
-_cached_opps_key = st.session_state.get("_opps_cache_key", "")
+_current_opps_key = _opps_cache_key(state.collection_groups)
+_cached_opps_key = state.opps_cache_key
 if _current_opps_key != _cached_opps_key:
     opps_for_badges = identify_sub_collection_opportunities(
-        st.session_state.collection_groups
+        state.collection_groups
     )
     opps_by_parent: dict[str, list[dict]] = {}
     for _opp in opps_for_badges:
         opps_by_parent.setdefault(_opp["parent_url"], []).append(_opp)
-    st.session_state.sub_collection_opportunities = opps_by_parent
-    st.session_state._opps_cache_key = _current_opps_key
+    state.sub_collection_opportunities = opps_by_parent
+    state.opps_cache_key = _current_opps_key
 else:
-    opps_by_parent = st.session_state.sub_collection_opportunities or {}
+    opps_by_parent = state.sub_collection_opportunities or {}
 
 batch_selections = []
 for i, sc in enumerate(scored):
@@ -371,8 +375,8 @@ if st.button(
                 "collection_url": scored[i].collection_url,
                 "collection_name": scored[i].collection_name,
                 "primary_keyword": scored[i].primary_keyword,
-                "primary_keyword_volume": st.session_state.collection_groups[i].primary_keyword_volume
-                    if i < len(st.session_state.collection_groups) else None,
+                "primary_keyword_volume": state.collection_groups[i].primary_keyword_volume
+                    if i < len(state.collection_groups) else None,
                 "total_volume": scored[i].total_volume,
                 "best_rank": scored[i].best_rank,
                 "total_clicks": scored[i].total_clicks,
@@ -384,12 +388,13 @@ if st.button(
     # When the batch composition changes, drop the in-batch FAQ
     # exclusion list so the new batch isn't artificially constrained.
     new_urls = {b["collection_url"] for b in batch}
-    old_urls = {b["collection_url"] for b in st.session_state.get("batch_collections", [])}
+    old_urls = {b["collection_url"] for b in state.batch_collections}
     if new_urls != old_urls:
-        st.session_state.batch_faq_topics = []
+        state.batch_faq_topics = []
 
-    st.session_state.batch_collections = batch
-    st.session_state.batch_mode = mode
+    state.batch_collections = batch
+    state.batch_mode = mode
+    save_state(state)
     st.success(f"Confirmed: {len(batch)} collections ready.")
 
 st.markdown("---")
@@ -398,7 +403,7 @@ st.markdown("---")
 st.markdown("## Sub-Collection Opportunities")
 
 opportunities = identify_sub_collection_opportunities(
-    st.session_state.collection_groups
+    state.collection_groups
 )
 
 if opportunities:

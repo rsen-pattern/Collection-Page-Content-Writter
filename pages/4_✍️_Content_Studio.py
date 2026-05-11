@@ -3,16 +3,19 @@
 import re
 import streamlit as st
 
+from app import get_state, save_state
 from core.text_utils import clean_keyword
 
 
 st.title("Step 4: Content Studio")
 
-if not st.session_state.get("batch_collections"):
+state = get_state()
+
+if not state.batch_collections:
     st.warning("No batch selected. Please complete Step 2 first.")
     st.stop()
 
-if not st.session_state.get("bifrost_api_key"):
+if not state.bifrost_api_key:
     st.warning("Please set your Bifrost API key in the sidebar on the main page.")
     st.stop()
 
@@ -30,9 +33,9 @@ from core.validator import (
 def _api_kwargs() -> dict:
     """Common kwargs for generate_content calls."""
     return {
-        "api_key": st.session_state.bifrost_api_key,
-        "base_url": st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
-        "model": st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
+        "api_key": state.bifrost_api_key,
+        "base_url": state.bifrost_base_url or "https://bifrost.pattern.com",
+        "model": state.selected_model or "anthropic/claude-sonnet-4-6",
     }
 
 
@@ -43,22 +46,22 @@ def _handle_result(result_tuple):
     label history entries with the model that actually produced them.
     """
     result, used_model = result_tuple
-    selected = st.session_state.get("selected_model", "")
+    selected = state.selected_model or ""
     if used_model != selected:
         st.info(f"Fallback: used **{used_model}** (selected model failed)")
     st.session_state["_last_used_model"] = used_model
     return result
 
 
-batch = st.session_state.batch_collections
-client = st.session_state.client_profile
+batch = state.batch_collections
+client = state.client_profile.model_dump()
 
 # Time estimate banner for large batches
 if len(batch) > 10:
     est_mins = round(len(batch) * 12 / 60, 1)
     est_hours = round(est_mins / 60, 1)
     time_str = f"~{est_hours} hours" if est_mins > 90 else f"~{est_mins} mins"
-    humanizer_note = " With humanizer enabled, multiply by ~1.8×." if st.session_state.get("humanize_enabled") else ""
+    humanizer_note = " With humanizer enabled, multiply by ~1.8×." if state.humanize_enabled else ""
     st.info(
         f"**Full Run: {len(batch)} collections queued.**  "
         f"Estimated generation time: {time_str} at ~12 seconds per collection.  "
@@ -69,11 +72,11 @@ if len(batch) > 10:
 # Humanizer toggle
 humanize_enabled = st.checkbox(
     "Run humanizer pass on generated content",
-    value=st.session_state.get("humanize_enabled", False),
+    value=state.humanize_enabled,
     key="humanize_toggle",
     help="When enabled, a second LLM call rewrites content to remove AI artifacts and improve natural readability.",
 )
-st.session_state.humanize_enabled = humanize_enabled
+state.humanize_enabled = humanize_enabled
 
 # --- 4.1 Content Brief Review ---
 st.markdown("## Content Briefs")
@@ -82,7 +85,7 @@ st.markdown("## Content Briefs")
 for i, col in enumerate(batch):
     brief_key = col["collection_url"]
 
-    if brief_key not in st.session_state.content_briefs:
+    if brief_key not in state.content_briefs:
         kw_difficulty = None
         for kw in col.get("secondary_keywords", []):
             if isinstance(kw, dict) and "keyword_difficulty" in kw:
@@ -102,15 +105,15 @@ for i, col in enumerate(batch):
             voice_notes=client.get("voice_notes", ""),
             keyword_difficulty=kw_difficulty,
         )
-        st.session_state.content_briefs[brief_key] = brief
+        state.content_briefs[brief_key] = brief
 
 
 # --- 4.2 & 4.3 Generation & Editing ---
 for i, col in enumerate(batch):
     brief_key = col["collection_url"]
-    brief = st.session_state.content_briefs[brief_key]
+    brief = state.content_briefs[brief_key]
     content_key = col["collection_url"]
-    content = st.session_state.generated_content.get(content_key, {})
+    content = state.generated_content.get(content_key, {})
 
     st.markdown("---")
     st.markdown(f"## {col['collection_name']}")
@@ -194,7 +197,7 @@ for i, col in enumerate(batch):
                         **_api_kwargs(),
                         brief=brief,
                         generation_type="full",
-                        batch_faq_topics=st.session_state.batch_faq_topics,
+                        batch_faq_topics=state.batch_faq_topics,
                     ))
                     generated = {
                         "seo_title": result.seo_title,
@@ -208,7 +211,7 @@ for i, col in enumerate(batch):
                     }
                     # Humanizer pass if enabled
                     humanized_flag = False
-                    if st.session_state.get("humanize_enabled"):
+                    if state.humanize_enabled:
                         with st.spinner("Humanizing content..."):
                             if generated["description"]:
                                 h_text, h_model = humanize_content(
@@ -225,7 +228,7 @@ for i, col in enumerate(batch):
                         append_snapshot, has_meaningful_content,
                     )
                     from datetime import datetime as _dt
-                    prior = st.session_state.generated_content.get(content_key) or {}
+                    prior = state.generated_content.get(content_key) or {}
                     generated["history"] = prior.get("history") or []
                     if has_meaningful_content(prior):
                         append_snapshot(
@@ -241,9 +244,10 @@ for i, col in enumerate(batch):
                     generated["_generated_at"] = _dt.utcnow().isoformat(timespec="seconds") + "Z"
                     generated["_model_used"] = st.session_state.get("_last_used_model", "")
                     generated["_generation_type"] = "full"
-                    st.session_state.generated_content[content_key] = generated
+                    state.generated_content[content_key] = generated
                     for faq in result.faqs:
-                        st.session_state.batch_faq_topics.append(faq.get("question", ""))
+                        state.batch_faq_topics.append(faq.get("question", ""))
+                    save_state(state)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Generation failed: {e}")
@@ -282,7 +286,8 @@ for i, col in enumerate(batch):
                     with hc2:
                         if st.button("⏪ Restore", key=f"restore_{i}_{h_idx}"):
                             restore_snapshot(content, entry.get("snapshot") or {})
-                            st.session_state.generated_content[content_key] = content
+                            state.generated_content[content_key] = content
+                            save_state(state)
                             st.success("Restored.")
                             st.rerun()
 
@@ -344,7 +349,7 @@ for i, col in enumerate(batch):
                             voice_notes=client.get("voice_notes", ""),
                         )
                         content["description"] = h_text
-                        selected = st.session_state.get("selected_model", "")
+                        selected = state.selected_model or ""
                         if h_model != selected:
                             st.info(f"Humanizer fallback: used **{h_model}**")
                         st.rerun()
@@ -365,7 +370,7 @@ for i, col in enumerate(batch):
             updated_faqs,
             brand_name=client.get("brand_name", ""),
             batch_faq_topics=[
-                t for t in st.session_state.batch_faq_topics
+                t for t in state.batch_faq_topics
                 if t not in [f.get("question", "") for f in updated_faqs]
             ],
         )
@@ -393,7 +398,7 @@ for i, col in enumerate(batch):
                 f.get("question", "") for f in content.get("faqs", [])
             }
             filtered_topics = [
-                t for t in st.session_state.batch_faq_topics
+                t for t in state.batch_faq_topics
                 if t not in prior_questions
             ]
             with st.spinner("Regenerating..."):
@@ -406,7 +411,7 @@ for i, col in enumerate(batch):
                     # Replace the previous questions with the new ones in
                     # the global topic list so cross-collection dedup
                     # still works for subsequent collections.
-                    st.session_state.batch_faq_topics = filtered_topics + [
+                    state.batch_faq_topics = filtered_topics + [
                         f.get("question", "") for f in result.faqs
                     ]
                     st.rerun()
@@ -511,10 +516,10 @@ for i, col in enumerate(batch):
                 from core.alt_text_generator import generate_alt_text_batch
                 with st.spinner(f"Generating alt text for {len(scraped)} products…"):
                     alt_results = generate_alt_text_batch(
-                        api_key=st.session_state.bifrost_api_key,
+                        api_key=state.bifrost_api_key,
                         brief=brief,
                         products=scraped,
-                        base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
+                        base_url=state.bifrost_base_url or "https://bifrost.pattern.com",
                     )
                 st.session_state[f"alt_results_{brief_key_url}"] = alt_results
                 st.success(f"Generated alt text for {len(alt_results)} products.")
@@ -564,7 +569,10 @@ FAQs:
                 clipboard_text += f"\nQ: {faq.get('question', '')}\nA: {faq.get('answer', '')}\n"
             st.code(clipboard_text, language=None)
 
-    st.session_state.generated_content[content_key] = content
+    state.generated_content[content_key] = content
+
+# Persist any per-render mutations (edited descriptions, FAQ tweaks, etc.).
+save_state(state)
 
 # Batch actions
 st.markdown("---")
@@ -581,7 +589,7 @@ def _run_generate_all():
     # Build the brief list in batch order — skip rows whose brief is missing.
     briefs = []
     for col in batch:
-        b = st.session_state.content_briefs.get(col["collection_url"])
+        b = state.content_briefs.get(col["collection_url"])
         if b is not None:
             briefs.append(b)
     if not briefs:
@@ -589,14 +597,14 @@ def _run_generate_all():
         return
 
     config = GenerationConfig(
-        api_key=st.session_state.bifrost_api_key,
-        base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
-        model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
-        humanize_enabled=bool(st.session_state.get("humanize_enabled")),
+        api_key=state.bifrost_api_key,
+        base_url=state.bifrost_base_url or "https://bifrost.pattern.com",
+        model=state.selected_model or "anthropic/claude-sonnet-4-6",
+        humanize_enabled=bool(state.humanize_enabled),
         brand_name=client.get("brand_name", ""),
         voice_notes=client.get("voice_notes", ""),
-        force_regenerate=bool(st.session_state.get("force_regenerate")),
-        batch_faq_topics=list(st.session_state.batch_faq_topics or []),
+        force_regenerate=bool(state.force_regenerate),
+        batch_faq_topics=list(state.batch_faq_topics or []),
     )
 
     progress = st.progress(0.0)
@@ -623,7 +631,7 @@ def _run_generate_all():
         if result.skipped:
             return
         # Snapshot the prior content (if meaningful) before overwriting.
-        prior = st.session_state.generated_content.get(bk) or {}
+        prior = state.generated_content.get(bk) or {}
         new_content = dict(result.content)
         new_content["history"] = prior.get("history") or []
         if has_meaningful_content(prior):
@@ -638,17 +646,17 @@ def _run_generate_all():
         new_content["_generated_at"] = _dt.utcnow().isoformat(timespec="seconds") + "Z"
         new_content["_model_used"] = result.model_used
         new_content["_generation_type"] = "full"
-        st.session_state.generated_content[bk] = new_content
+        state.generated_content[bk] = new_content
         for faq in new_content.get("faqs", []):
-            st.session_state.batch_faq_topics.append(faq.get("question", ""))
+            state.batch_faq_topics.append(faq.get("question", ""))
 
     def cancel_check():
-        return bool(st.session_state.get("cancel_generation"))
+        return bool(state.cancel_generation)
 
     generate_for_batch(
         briefs=briefs,
         config=config,
-        already_generated=st.session_state.generated_content,
+        already_generated=state.generated_content,
         on_start=on_start,
         on_progress=on_progress,
         on_throttle=on_throttle,
@@ -669,17 +677,17 @@ with ba1:
 
     if st.session_state.get("_pending_generate_all"):
         est_mins = round(len(batch) * 12 / 60, 1)
-        humanize_on = st.session_state.get("humanize_enabled", False)
+        humanize_on = state.humanize_enabled
         humanize_mult = "1.8×" if humanize_on else "1×"
-        force_regenerate = st.session_state.get("force_regenerate", False)
+        force_regenerate = state.force_regenerate
         skip_count = 0 if force_regenerate else sum(
-            1 for col in batch if col["collection_url"] in st.session_state.generated_content
+            1 for col in batch if col["collection_url"] in state.generated_content
         )
         run_count = len(batch) - skip_count
 
         st.warning(
             f"**About to generate content for {run_count} collections.**\n\n"
-            f"- Model: `{st.session_state.get('selected_model', 'default')}`\n"
+            f"- Model: `{state.selected_model or 'default'}`\n"
             f"- Humaniser: {humanize_on} ({humanize_mult} time)\n"
             f"- Estimated time: ~{est_mins} mins (12s per collection baseline)\n"
             f"- Skipping: {skip_count} already-generated "
@@ -700,7 +708,8 @@ with ba2:
     if st.button("Approve All"):
         for col in batch:
             ck = col["collection_url"]
-            if ck in st.session_state.generated_content:
-                st.session_state.generated_content[ck]["approved"] = True
+            if ck in state.generated_content:
+                state.generated_content[ck]["approved"] = True
+        save_state(state)
         st.success("All generated content approved!")
         st.rerun()

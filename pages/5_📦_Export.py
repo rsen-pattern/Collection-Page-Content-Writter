@@ -6,10 +6,14 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 
+from app import get_state, save_state
+
 
 st.title("Step 5: Export & Implementation Tracking")
 
-if not st.session_state.get("batch_collections"):
+state = get_state()
+
+if not state.batch_collections:
     st.warning("No batch selected. Please complete Step 2 first.")
     st.stop()
 
@@ -21,13 +25,15 @@ from core.exporter import (
     generate_copy_paste_cards,
 )
 
-batch = st.session_state.batch_collections
-content = st.session_state.generated_content
-client = st.session_state.client_profile
+batch = state.batch_collections
+content = state.generated_content
+# client_profile is a Pydantic model; expose its dict form so existing
+# `client.get("brand_name", "")` calls keep working unchanged.
+client = state.client_profile.model_dump()
 
 
 def _is_test_run() -> bool:
-    return (st.session_state.get("batch_mode") or "").startswith("🧪 Test Run")
+    return (state.batch_mode or "").startswith("🧪 Test Run")
 
 
 def _filename(base: str) -> str:
@@ -89,7 +95,7 @@ st.markdown("---")
 # --- 5.1 Export Formats ---
 st.markdown("## Export Formats")
 
-source_format = st.session_state.get("source_format", "")
+source_format = state.source_format or ""
 
 if source_format == "keyword_map":
     st.markdown("### Keyword Mapping Round-Trip (XLSX)")
@@ -101,7 +107,7 @@ if source_format == "keyword_map":
         buffer = export_keyword_map_roundtrip(
             export_collections,
             client.get("brand_name", ""),
-            keyword_width=st.session_state.get("source_keyword_width", 4),
+            keyword_width=state.source_keyword_width or 4,
         )
         st.download_button(
             label="Download Round-Trip Keyword Map",
@@ -179,7 +185,7 @@ if all_alt:
     st.markdown("---")
 
 # --- Sub-Collection Opportunities ---
-_subops_by_parent: dict = st.session_state.get("sub_collection_opportunities") or {}
+_subops_by_parent: dict = state.sub_collection_opportunities or {}
 _all_subops = [opp for opps in _subops_by_parent.values() for opp in opps]
 
 if _all_subops:
@@ -270,7 +276,7 @@ st.markdown("---")
 # --- 5.2 Implementation Tracker ---
 st.markdown("## Implementation Tracker")
 
-tracker = st.session_state.implementation_tracker
+tracker = state.implementation_tracker
 
 for col in export_collections:
     url = col["collection_url"]
@@ -326,4 +332,5 @@ for url, data in tracker.items():
         )
         data["notes"] = notes
 
-st.session_state.implementation_tracker = tracker
+state.implementation_tracker = tracker
+save_state(state)

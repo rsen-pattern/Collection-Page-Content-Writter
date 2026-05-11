@@ -1,4 +1,4 @@
-"""Tests for app.py session-state defaults and reset semantics."""
+"""Tests for app.py — get_state, save_state, clear_wip_state, legacy migration."""
 
 import sys
 from pathlib import Path
@@ -20,14 +20,43 @@ class _AttrDict(dict):
         self[name] = value
 
 
-def _import_app():
-    """Import app.py with streamlit stubbed so module-level code is harmless."""
+def _build_fake_streamlit(secrets: dict | None = None):
+    """Build a Streamlit stub where input widgets echo their default values."""
     fake_st = MagicMock()
     fake_st.session_state = _AttrDict()
     fake_st.set_page_config = MagicMock()
     fake_st.sidebar.__enter__ = MagicMock(return_value=fake_st)
     fake_st.sidebar.__exit__ = MagicMock(return_value=False)
+    fake_st.secrets = secrets or {}
 
+    # Widget stubs that pass the default through — so the module-level sidebar
+    # block doesn't write MagicMock instances into the state during reload.
+    def _echo_value(*args, **kwargs):
+        return kwargs.get("value", "")
+
+    def _echo_selectbox(*args, **kwargs):
+        # Mirror st.selectbox returning the option at `index=`
+        if args and "index" in kwargs:
+            options = args[1] if len(args) > 1 else kwargs.get("options", [])
+            idx = kwargs.get("index", 0) or 0
+            if isinstance(options, (list, tuple)) and 0 <= idx < len(options):
+                return options[idx]
+        if "options" in kwargs:
+            opts = kwargs["options"]
+            idx = kwargs.get("index", 0) or 0
+            if 0 <= idx < len(opts):
+                return opts[idx]
+        return ""
+
+    fake_st.text_input.side_effect = _echo_value
+    fake_st.text_area.side_effect = _echo_value
+    fake_st.selectbox.side_effect = _echo_selectbox
+    return fake_st
+
+
+def _import_app(secrets: dict | None = None):
+    """Import app.py with streamlit stubbed so module-level code is harmless."""
+    fake_st = _build_fake_streamlit(secrets)
     with patch.dict("sys.modules", {"streamlit": fake_st}):
         import importlib
         import app
@@ -35,120 +64,150 @@ def _import_app():
         return app, fake_st
 
 
-def test_default_client_profile_returns_fresh_dict():
-    app, _ = _import_app()
-    a = app._default_client_profile()
-    b = app._default_client_profile()
-    assert a == b
-    a["brand_usps"].append("BUILT FOR LIFE")
-    a["brand_name"] = "Mutant"
-    assert b["brand_usps"] == []
-    assert b["brand_name"] == ""
+class TestGetState:
+    def test_fresh_session_returns_appstate(self):
+        app, fake_st = _import_app()
+        from core.session_state import AppState
+        state = app.get_state()
+        assert isinstance(state, AppState)
+        # _app_state_v1 holds the live instance.
+        assert fake_st.session_state[app._STATE_KEY] is state
+
+    def test_get_state_is_idempotent_per_session(self):
+        app, _ = _import_app()
+        a = app.get_state()
+        b = app.get_state()
+        assert a is b
+
+    def test_secrets_loaded_into_state_on_first_init(self):
+        app, _ = _import_app(
+            secrets={
+                "BIFROST_API_KEY": "sk-secret",
+                "BIFROST_DEFAULT_MODEL": "anthropic/claude-haiku-4-5",
+            }
+        )
+        state = app.get_state()
+        assert state.bifrost_api_key == "sk-secret"
+        assert state.selected_model == "anthropic/claude-haiku-4-5"
 
 
-def test_wip_factories_produce_fresh_containers():
-    """Every factory in WIP_DEFAULT_FACTORIES must return a new container each call."""
-    app, _ = _import_app()
-    for key, factory in app.WIP_DEFAULT_FACTORIES.items():
-        a = factory()
-        b = factory()
-        assert a == b, f"Factory for {key} produced inconsistent values"
-        if isinstance(a, (list, dict)):
-            assert a is not b, f"Factory for {key} returns the same instance"
+class TestLegacyMigration:
+    def test_flat_namespace_migrates_into_app_state(self):
+        app, fake_st = _import_app()
+        # Drop the auto-built AppState so we can simulate a pre-upgrade session.
+        del fake_st.session_state[app._STATE_KEY]
+        # Plant legacy flat-namespace keys.
+        fake_st.session_state["bifrost_api_key"] = "sk-legacy"
+        fake_st.session_state["client_profile"] = {"brand_name": "Legacy Brand"}
+        fake_st.session_state["collection_groups"] = [
+            {"collection_url": "https://x.com/collections/y", "primary_keyword": "y"}
+        ]
+
+        state = app.get_state()
+        # Legacy keys swept up into the typed state.
+        assert state.bifrost_api_key == "sk-legacy"
+        assert state.client_profile.brand_name == "Legacy Brand"
+        assert len(state.collection_groups) == 1
+        # And removed from the flat namespace to prevent split-brain reads.
+        assert "bifrost_api_key" not in fake_st.session_state
+        assert "client_profile" not in fake_st.session_state
+        assert "collection_groups" not in fake_st.session_state
+
+    def test_migration_logs_telemetry_event(self):
+        app, fake_st = _import_app()
+        del fake_st.session_state[app._STATE_KEY]
+        fake_st.session_state["bifrost_api_key"] = "sk-x"
+        from unittest.mock import patch as _patch
+        with _patch("core.telemetry.log_event") as mock_log:
+            app.get_state()
+        events = [c.args[0] for c in mock_log.call_args_list]
+        assert "session_state_legacy_migration" in events
 
 
-def test_reset_wip_state_clears_documented_keys_without_touching_credentials():
-    app, fake_st = _import_app()
-    # Pre-populate the session with both WIP state and credentials.
-    fake_st.session_state.update({
-        "collection_groups": ["taint"],
-        "batch_collections": [{"x": 1}],
-        "batch_faq_topics": ["already-used"],
-        "audit_results": {"taint": True},
-        "single_url_history": [{"a": 1}],
-        "sitemap_parsed": {"taint": True},
-        "prompt_overrides": {"banned_phrases": ["x"]},
-        "bifrost_api_key": "sk-keep",
-        "bifrost_base_url": "https://keep.example.com",
-        "selected_model": "anthropic/claude-sonnet-4-6",
-        "dataforseo_login": "keep@example.com",
-        "dataforseo_password": "keep",
-        "client_profile": {"brand_name": "untouched-by-reset"},
-        "webscraping_ai_key": "wsa-keep",
-        "scraperapi_key": "sapi-keep",
-    })
+class TestSaveState:
+    def test_save_state_persists_mutation(self):
+        app, fake_st = _import_app()
+        state = app.get_state()
+        state.bifrost_api_key = "sk-changed"
+        app.save_state(state)
+        assert fake_st.session_state[app._STATE_KEY].bifrost_api_key == "sk-changed"
 
-    app.reset_wip_state()
+    def test_save_state_runs_invariants(self):
+        app, _ = _import_app()
+        from core.session_state import BatchCollectionEntry
+        state = app.get_state()
+        # Set a batch without any collection_groups — the invariant should clear it.
+        state.batch_collections = [BatchCollectionEntry(collection_url="u1")]
+        state.collection_groups = []
+        app.save_state(state)
+        # Re-fetched state should have the batch cleared by the invariant.
+        assert app.get_state().batch_collections == []
 
-    # WIP keys reset
-    assert fake_st.session_state["collection_groups"] == []
-    assert fake_st.session_state["batch_collections"] == []
-    assert fake_st.session_state["batch_faq_topics"] == []
-    assert fake_st.session_state["audit_results"] == {}
-    assert fake_st.session_state["single_url_history"] == []
-    # Sitemap and prompt_overrides are dropped entirely
-    assert "sitemap_parsed" not in fake_st.session_state
-    assert "prompt_overrides" not in fake_st.session_state
-
-    # Credentials, model, scraper keys, client_profile all preserved
-    assert fake_st.session_state["bifrost_api_key"] == "sk-keep"
-    assert fake_st.session_state["bifrost_base_url"] == "https://keep.example.com"
-    assert fake_st.session_state["selected_model"] == "anthropic/claude-sonnet-4-6"
-    assert fake_st.session_state["dataforseo_login"] == "keep@example.com"
-    assert fake_st.session_state["dataforseo_password"] == "keep"
-    assert fake_st.session_state["client_profile"]["brand_name"] == "untouched-by-reset"
-    assert fake_st.session_state["webscraping_ai_key"] == "wsa-keep"
-    assert fake_st.session_state["scraperapi_key"] == "sapi-keep"
+    def test_save_state_swallows_validation_errors(self):
+        """A model_validate failure must not break save_state — keep user work."""
+        app, fake_st = _import_app()
+        from core.session_state import AppState
+        state = app.get_state()
+        # Build a state that round-trip will fail by injecting a non-serialisable value.
+        class _Unserialisable:
+            def __repr__(self):
+                return "<unserialisable>"
+        # Use sf_crawl_data which is dict[str, Any] — accepts anything but
+        # model_dump may choke. We trip the save_state recovery path by
+        # forcing model_validate to raise.
+        with patch.object(AppState, "model_validate", side_effect=RuntimeError("boom")):
+            with patch("core.telemetry.log_event") as mock_log:
+                app.save_state(state)
+        events = [c.args[0] for c in mock_log.call_args_list]
+        assert "session_state_save_failed" in events
+        # The state instance is preserved even though validation failed.
+        assert fake_st.session_state[app._STATE_KEY] is state
 
 
-def test_new_wip_keys_registered():
-    """Verify the registry contains keys added by later features."""
-    app, _ = _import_app()
-    # Keys added in Commit 1 (post-merge upgrade): the previously-missed
-    # ones that would otherwise leak across brand switches.
-    expected = {
-        "source_keyword_width",
-        "sub_collection_opportunities",
-        "audit_results_generated",
-        "scrape_all_attempts",
-    }
-    assert expected.issubset(set(app.WIP_DEFAULT_FACTORIES.keys()))
+class TestClearWipState:
+    def test_preserves_credentials_and_brand_profile(self):
+        app, _ = _import_app()
+        state = app.get_state()
+        from core.session_state import (
+            ClientProfile, PromptOverrides, BatchCollectionEntry,
+        )
+        # Populate persistent + WIP fields.
+        state.bifrost_api_key = "sk-keep"
+        state.selected_model = "anthropic/claude-sonnet-4-6"
+        state.dataforseo_login = "login@example.com"
+        state.client_profile = ClientProfile(brand_name="Stay")
+        state.prompt_overrides = PromptOverrides(brand_custom_rules="rule")
+        state.collection_groups = [{"collection_url": "u"}]
+        state.batch_collections = [BatchCollectionEntry(collection_url="u")]
+        state.batch_faq_topics = ["already"]
+        state.humanize_enabled = True  # WIP-ish toggle — reset to default
 
+        app.save_state(state)
+        app.clear_wip_state()
 
-def test_persistent_session_keys_documented():
-    app, _ = _import_app()
-    # Credentials, model, scraper keys, and client_profile must be listed.
-    expected = {
-        "bifrost_api_key",
-        "bifrost_base_url",
-        "selected_model",
-        "dataforseo_login",
-        "dataforseo_password",
-        "webscraping_ai_key",
-        "scraperapi_key",
-        "client_profile",
-    }
-    assert expected.issubset(set(app.PERSISTENT_SESSION_KEYS))
+        new = app.get_state()
+        # Persistent: kept.
+        assert new.bifrost_api_key == "sk-keep"
+        assert new.selected_model == "anthropic/claude-sonnet-4-6"
+        assert new.dataforseo_login == "login@example.com"
+        assert new.client_profile.brand_name == "Stay"
+        assert new.prompt_overrides.brand_custom_rules == "rule"
+        # WIP: reset.
+        assert new.collection_groups == []
+        assert new.batch_collections == []
+        assert new.batch_faq_topics == []
+        assert new.humanize_enabled is False
 
+    def test_clears_transient_ui_keys(self):
+        app, fake_st = _import_app()
+        fake_st.session_state["_pending_brand_switch"] = {"x": 1}
+        fake_st.session_state["_bp_pending_sitemap"] = {"y": 2}
+        fake_st.session_state["_ai_diagnosis"] = "diag"
+        app.clear_wip_state()
+        assert "_pending_brand_switch" not in fake_st.session_state
+        assert "_bp_pending_sitemap" not in fake_st.session_state
+        assert "_ai_diagnosis" not in fake_st.session_state
 
-def test_reset_clears_internal_cache_keys():
-    app, fake_st = _import_app()
-    fake_st.session_state.update({
-        "_opps_cache_key": "abc123",
-        "_bp_pending_sitemap": {"x": 1},
-        "_pending_generate_all": True,
-        "bifrost_api_key": "sk-keep",
-    })
-    app.reset_wip_state()
-    # Internal caches dropped
-    assert "_opps_cache_key" not in fake_st.session_state
-    assert "_bp_pending_sitemap" not in fake_st.session_state
-    assert "_pending_generate_all" not in fake_st.session_state
-    # Credentials preserved
-    assert fake_st.session_state["bifrost_api_key"] == "sk-keep"
-
-
-def test_clear_wip_state_alias_matches_reset():
-    """The clear_wip_state alias is just reset_wip_state under a different name."""
-    app, _ = _import_app()
-    assert app.clear_wip_state is app.reset_wip_state
+    def test_reset_wip_state_alias(self):
+        app, _ = _import_app()
+        assert app.reset_wip_state is app.clear_wip_state
