@@ -1,9 +1,43 @@
 """Collection SEO Engine — Main Streamlit entry point with grouped navigation."""
 
 import json
+import os
+import warnings
 from pathlib import Path
 
 import streamlit as st
+
+
+def __getattr__(name: str):
+    """Module-level shim that warns on legacy access patterns.
+
+    Catches imports like ``from app import init_session_state`` from any
+    code that hasn't been migrated to ``get_state()`` / ``save_state()``.
+    Removed in a later release.
+    """
+    if name == "init_session_state":
+        warnings.warn(
+            "init_session_state is deprecated; use get_state() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return get_state
+    if name in ("WIP_DEFAULT_FACTORIES", "PERSISTENT_SESSION_KEYS"):
+        warnings.warn(
+            f"{name} has been replaced by core.session_state.PERSISTENT_FIELDS "
+            "and the AppState model. Update callers to use get_state().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from core.session_state import AppState, PERSISTENT_FIELDS
+        if name == "PERSISTENT_SESSION_KEYS":
+            return tuple(PERSISTENT_FIELDS)
+        # WIP_DEFAULT_FACTORIES — derive from model fields minus persistent set.
+        return {
+            field: type(None) for field in AppState.model_fields
+            if field not in PERSISTENT_FIELDS
+        }
+    raise AttributeError(f"module 'app' has no attribute {name!r}")
 
 st.set_page_config(
     page_title="Collection SEO Engine",
@@ -361,6 +395,25 @@ with st.sidebar:
         "- [🐛 Report an issue](https://github.com/rsen-pattern/Collection-Page-Content-Writter/issues)"
     )
     st.caption("v0.1 · Internal agency tool")
+
+    # Debug expander — only when SHOW_DEBUG env var is set.
+    if os.getenv("SHOW_DEBUG", "").lower() in ("true", "1", "yes"):
+        with st.expander("🔧 Debug: session state"):
+            st.json({
+                "state_shape": type(_state).__name__,
+                "collections": len(_state.collection_groups),
+                "batch_size": len(_state.batch_collections),
+                "generated": len(_state.generated_content),
+                "audited": len(_state.audit_results),
+                "has_brand": bool(_state.client_profile.brand_name),
+                "humanize_enabled": _state.humanize_enabled,
+                "batch_mode": _state.batch_mode,
+            })
+            st.caption("Raw state dump:")
+            try:
+                st.json(_state.model_dump(mode="json"))
+            except Exception as e:
+                st.caption(f"(dump failed: {e})")
 
     if _state_dirty:
         save_state(_state)

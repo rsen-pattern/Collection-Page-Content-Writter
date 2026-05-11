@@ -231,3 +231,50 @@ python -m pytest tests/ -v
 - **Phase 2:** DataForSEO integration for automated data gathering and on-page audits
 - **Phase 3:** Content Studio polish — side-by-side views, content history, brand voice learning
 - **Phase 4:** Shopify Admin API integration, multi-client project management
+
+## Session state architecture
+
+The app uses a typed Pydantic schema (`core.session_state.AppState`) for all
+domain state instead of the flat `st.session_state` namespace. Pages access
+state via two helpers from `app.py`:
+
+```python
+from app import get_state, save_state
+
+state = get_state()                       # returns AppState
+state.client_profile.brand_name           # typed read
+state.collection_groups.append(group)     # mutation
+save_state(state)                         # persist + run invariants
+```
+
+**Validation mode:** Lenient. Invalid values are coerced to defaults and
+logged via telemetry (`session_state_field_coerced`,
+`session_state_invariant_violated`) rather than raising. This keeps sessions
+resilient to legacy data and bugs.
+
+**Migration:** First call to `get_state()` in a session with legacy flat-
+namespace keys auto-migrates them into the new shape and emits a
+`session_state_legacy_migration` event. Transparent to users.
+
+**Resetting state:** `clear_wip_state()` rebuilds the AppState from
+`core.session_state.PERSISTENT_FIELDS` — everything except credentials,
+the active brand profile, and the selected model is reset.
+
+**What's NOT in AppState:**
+
+- Widget keys (`st.text_input(..., key="my_field")`) — Streamlit's contract.
+- Transient UI flags (`_pending_brand_switch`, `_ai_diagnosis`,
+  `_single_prefill_*`, etc.) — short-lived, no benefit to typing.
+- The `_app_state_v1` key itself, which holds the AppState instance.
+
+**Adding new state:** Add a field to `AppState` in `core/session_state.py`.
+If the field is per-batch / per-brand WIP (cleared on brand switch), no
+extra step — `clear_wip_state` derives the WIP set from `PERSISTENT_FIELDS`,
+so anything not listed there is automatically cleared.
+
+**Invariants:** Cross-field rules live as `@model_validator` methods on
+`AppState`. Add new ones sparingly — only for invariants that catch real
+bugs.
+
+**Debug mode:** Set `SHOW_DEBUG=true` in the environment to surface a
+"🔧 Debug: session state" expander in the sidebar with a live JSON dump.
