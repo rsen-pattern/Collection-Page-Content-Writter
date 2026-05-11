@@ -42,71 +42,11 @@ def get_secret(key: str, default: str = "") -> str:
         return default
 
 
-def _default_client_profile() -> dict:
-    """Fresh client_profile dict — built per call so callers can't mutate a shared template."""
-    return {
-        "brand_name": "",
-        "store_url": "",
-        "brand_usps": [],
-        "voice_notes": "",
-        "target_market": "UK",
-        "faq_count": 4,
-        "past_feedback": "",
-    }
+_STATE_KEY = "_app_state_v1"
 
-
-# Session keys considered "project work-in-progress". The brand-switch
-# reset path uses this list; init_session_state() seeds these to fresh
-# empties on first load. API credentials and model selection are NOT in
-# this list and are never cleared on brand switch.
-#
-# When adding a new feature with per-batch / per-client state, REGISTER
-# THE KEY HERE so brand switches and reset_wip_state() pick it up.
-WIP_DEFAULT_FACTORIES = {
-    "raw_data": lambda: None,
-    "normalized_data": lambda: None,
-    "source_format": lambda: None,
-    "source_keyword_width": lambda: 4,
-    "collection_groups": list,
-    "skipped_collections": list,
-    "scored_collections": list,
-    "batch_collections": list,
-    "batch_mode": lambda: "",
-    "audit_results": dict,
-    "audit_results_generated": dict,
-    "scrape_results": dict,
-    "scrape_tiers": dict,
-    "scrape_all_attempts": dict,
-    "sf_crawl_data": dict,
-    "content_briefs": dict,
-    "generated_content": dict,
-    "batch_faq_topics": list,
-    "implementation_tracker": dict,
-    "single_url_content": dict,
-    "single_url_history": list,
-    "sub_collection_opportunities": dict,
-}
-
-
-# Keys that PERSIST across brand switches — never cleared by reset_wip_state.
-# Listed explicitly so it's clear what counts as cross-brand state.
-PERSISTENT_SESSION_KEYS = (
-    "bifrost_api_key",
-    "bifrost_base_url",
-    "selected_model",
-    "dataforseo_login",
-    "dataforseo_password",
-    "webscraping_ai_key",
-    "scraperapi_key",
-    "client_profile",
-)
-
-
-# Internal cache keys (underscore-prefixed) that should be cleared on
-# brand switch alongside WIP state. Not part of the public WIP registry
-# because they're implementation details, not user data.
-_INTERNAL_CACHE_KEYS = (
-    "_opps_cache_key",
+# Transient UI state — Streamlit-managed widget state and short-lived flags
+# that don't belong in AppState. Listed so clear_wip_state can sweep them.
+_TRANSIENT_UI_KEYS = (
     "_bp_pending_sitemap",
     "_bp_pending_sitemap_source_url",
     "_bp_pending_extracted_bans",
@@ -121,91 +61,130 @@ _INTERNAL_CACHE_KEYS = (
     "_existing_bottom",
     "_ai_diagnosis",
     "_pending_generate_all",
+    "_pending_brand_switch",
+    "_last_used_model",
 )
 
 
-def init_session_state():
-    """Initialize all session state variables.
+def get_state():
+    """Return the typed :class:`AppState` for this session.
 
-    Each value is constructed fresh (factories / fresh literals) so a caller
-    mutating ``client_profile`` in place can't taint the next initialisation.
+    Auto-migrates from the legacy flat-namespace shape on first call.
+    Always returns a valid AppState — never raises.
     """
-    if "client_profile" not in st.session_state:
-        st.session_state["client_profile"] = _default_client_profile()
+    from core.session_state import AppState, parse_lenient
 
-    for key, factory in WIP_DEFAULT_FACTORIES.items():
-        if key not in st.session_state:
-            st.session_state[key] = factory()
+    # New shape already in place — return it.
+    existing = st.session_state.get(_STATE_KEY)
+    if isinstance(existing, AppState):
+        return existing
 
-    # Scraper API keys — optional, tiers without a key are skipped.
-    if "webscraping_ai_key" not in st.session_state:
-        st.session_state["webscraping_ai_key"] = get_secret("WEBSCRAPING_AI_KEY", "")
-    if "scraperapi_key" not in st.session_state:
-        st.session_state["scraperapi_key"] = get_secret("SCRAPERAPI_KEY", "")
+    # Legacy migration: any of these keys living at the top level means
+    # this session was started before the typed shape existed.
+    legacy_keys = {
+        "client_profile",
+        "raw_data",
+        "normalized_data",
+        "collection_groups",
+        "batch_collections",
+        "generated_content",
+        "bifrost_api_key",
+        "bifrost_base_url",
+        "selected_model",
+    }
+    present = [k for k in legacy_keys if k in st.session_state]
+    if present:
+        from core.telemetry import log_event
+        log_event("session_state_legacy_migration", source_keys_present=present)
+        raw = {
+            k: st.session_state[k]
+            for k in list(st.session_state.keys())
+            if k in AppState.model_fields
+        }
+        state = parse_lenient(raw)
+        st.session_state[_STATE_KEY] = state
+        # Drop legacy keys so reads can't split-brain across both shapes.
+        for k in list(st.session_state.keys()):
+            if k in AppState.model_fields:
+                del st.session_state[k]
+        return state
 
-    # Bifrost API config — supports both BIFROST_API_KEY and BIFROST_KEY names.
-    if "bifrost_api_key" not in st.session_state:
-        st.session_state["bifrost_api_key"] = (
-            get_secret("BIFROST_API_KEY") or get_secret("BIFROST_KEY")
-        )
-    if "bifrost_base_url" not in st.session_state:
-        st.session_state["bifrost_base_url"] = get_secret(
-            "BIFROST_BASE_URL", "https://bifrost.pattern.com"
-        )
-    if "selected_model" not in st.session_state:
-        st.session_state["selected_model"] = get_secret(
-            "BIFROST_DEFAULT_MODEL", "anthropic/claude-sonnet-4-6"
-        )
-
-    # DataForSEO (optional)
-    if "dataforseo_login" not in st.session_state:
-        st.session_state["dataforseo_login"] = get_secret("DATAFORSEO_LOGIN")
-    if "dataforseo_password" not in st.session_state:
-        st.session_state["dataforseo_password"] = get_secret("DATAFORSEO_PASSWORD")
+    # Fresh session — build defaults from secrets where applicable.
+    state = AppState()
+    state.bifrost_api_key = get_secret("BIFROST_API_KEY") or get_secret("BIFROST_KEY")
+    state.bifrost_base_url = get_secret("BIFROST_BASE_URL", "https://bifrost.pattern.com")
+    state.selected_model = get_secret("BIFROST_DEFAULT_MODEL", "anthropic/claude-sonnet-4-6")
+    state.dataforseo_login = get_secret("DATAFORSEO_LOGIN")
+    state.dataforseo_password = get_secret("DATAFORSEO_PASSWORD")
+    state.webscraping_ai_key = get_secret("WEBSCRAPING_AI_KEY", "")
+    state.scraperapi_key = get_secret("SCRAPERAPI_KEY", "")
+    st.session_state[_STATE_KEY] = state
+    return state
 
 
-def reset_wip_state() -> None:
-    """Reset every work-in-progress session key to its declared default.
+def save_state(state) -> None:
+    """Persist mutations made to the AppState. Runs invariant validators.
 
-    Does not touch API credentials, model selection, DataForSEO credentials,
-    or client_profile (callers replace client_profile explicitly with the new
-    brand). Safe to call multiple times.
-
-    Also clears underscore-prefixed internal cache keys (sub-collection
-    opportunity cache, pending UI state) and the per-brand sitemap so the
-    next brand starts from a truly empty session.
+    Pages must call this after mutating fields. Failing to call save_state
+    after a mutation means the next get_state() will return the unsaved
+    version only within the same script run — across reruns, mutations to
+    mutable fields (lists, dicts) are still visible because Python
+    references are shared, but invariants haven't been re-checked.
     """
-    for key, factory in WIP_DEFAULT_FACTORIES.items():
-        st.session_state[key] = factory()
-    # Internal caches are dropped entirely; init_session_state doesn't seed them.
-    for key in _INTERNAL_CACHE_KEYS:
+    from core.session_state import AppState
+
+    try:
+        validated = AppState.model_validate(state.model_dump())
+        st.session_state[_STATE_KEY] = validated
+    except Exception as e:
+        from core.telemetry import log_event
+        log_event("session_state_save_failed", error=str(e)[:200])
+        # Keep the unvalidated state rather than losing user work.
+        st.session_state[_STATE_KEY] = state
+
+
+def clear_wip_state() -> None:
+    """Reset all work-in-progress fields to defaults.
+
+    Preserves credentials, the selected model, and the active brand profile
+    (anything in :data:`core.session_state.PERSISTENT_FIELDS`). Also drops
+    transient UI keys (``_pending_brand_switch``, ``_bp_pending_sitemap``,
+    etc.) since they belong to the outgoing brand.
+    """
+    from core.session_state import AppState, PERSISTENT_FIELDS
+
+    current = get_state()
+    preserved = {
+        name: getattr(current, name) for name in PERSISTENT_FIELDS
+    }
+    fresh = AppState(**preserved)
+    st.session_state[_STATE_KEY] = fresh
+
+    for key in _TRANSIENT_UI_KEYS:
         st.session_state.pop(key, None)
-    # Sitemap is per-brand and lives outside WIP_DEFAULT_FACTORIES so the
-    # Brand Profile page can repopulate it without flicker. Clear it here.
-    st.session_state.pop("sitemap_parsed", None)
-    # Discard prompt_overrides — they belong to the previous brand.
-    st.session_state.pop("prompt_overrides", None)
 
 
-# Backwards-compatible alias matching the prompt's naming convention.
-clear_wip_state = reset_wip_state
+# Backwards-compatible alias.
+reset_wip_state = clear_wip_state
 
 
-init_session_state()
+# Prime the session on import so module-level reads in pages don't crash.
+get_state()
 
 
 # ============================================================
 # HOME PAGE
 # ============================================================
 def home_page():
+    state = get_state()
     st.title("Collection SEO Engine")
     st.markdown(
         "An internal agency tool for auditing and optimizing eCommerce collection pages at scale."
     )
 
-    if st.session_state.bifrost_api_key:
+    if state.bifrost_api_key:
         model_options, model_labels, _ = get_model_options()
-        st.success(f"Connected to Bifrost — Model: **{model_labels.get(st.session_state.selected_model, st.session_state.selected_model)}**")
+        st.success(f"Connected to Bifrost — Model: **{model_labels.get(state.selected_model, state.selected_model)}**")
     else:
         st.warning("Set your Bifrost API key in the sidebar to enable content generation.")
 
@@ -240,37 +219,38 @@ run audits, generate content at scale, and export.
 
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        has_data = st.session_state.normalized_data is not None
+        has_data = state.normalized_data is not None
         st.markdown(f"### {'✅' if has_data else '1️⃣'} Data Input")
         st.caption("Upload keyword data")
     with col2:
-        has_scores = len(st.session_state.scored_collections) > 0
+        has_scores = len(state.scored_collections) > 0
         st.markdown(f"### {'✅' if has_scores else '2️⃣'} Scoring")
         st.caption("Prioritize collections")
     with col3:
-        has_audits = len(st.session_state.audit_results) > 0
+        has_audits = len(state.audit_results) > 0
         st.markdown(f"### {'✅' if has_audits else '3️⃣'} Audit")
         st.caption("Page audits")
     with col4:
-        has_content = len(st.session_state.generated_content) > 0
+        has_content = len(state.generated_content) > 0
         st.markdown(f"### {'✅' if has_content else '4️⃣'} Content")
         st.caption("Generate & review")
     with col5:
         st.markdown("### 5️⃣ Export")
         st.caption("Export results")
 
-    if st.session_state.collection_groups:
+    if state.collection_groups:
         st.markdown("---")
         m1, m2, m3, m4 = st.columns(4)
         with m1:
-            st.metric("Collections", len(st.session_state.collection_groups))
+            st.metric("Collections", len(state.collection_groups))
         with m2:
-            st.metric("In Batch", len(st.session_state.batch_collections))
+            st.metric("In Batch", len(state.batch_collections))
         with m3:
-            st.metric("Content Generated", len(st.session_state.generated_content))
+            st.metric("Content Generated", len(state.generated_content))
         with m4:
             approved = sum(
-                1 for c in st.session_state.generated_content.values() if c.get("approved")
+                1 for c in state.generated_content.values()
+                if getattr(c, "approved", False)
             )
             st.metric("Approved", approved)
 
@@ -305,25 +285,29 @@ pg = st.navigation(
 # SIDEBAR — API Configuration & Model Selection
 # ============================================================
 with st.sidebar:
+    _state = get_state()
+    _state_dirty = False
     st.markdown("---")
     st.markdown("### Bifrost API")
 
     api_key = st.text_input(
         "API Key",
-        value=st.session_state.bifrost_api_key,
+        value=_state.bifrost_api_key,
         type="password",
         key="sidebar_bifrost_key",
     )
-    if api_key != st.session_state.bifrost_api_key:
-        st.session_state.bifrost_api_key = api_key
+    if api_key != _state.bifrost_api_key:
+        _state.bifrost_api_key = api_key
+        _state_dirty = True
 
     base_url = st.text_input(
         "Base URL",
-        value=st.session_state.bifrost_base_url,
+        value=_state.bifrost_base_url,
         key="sidebar_bifrost_url",
     )
-    if base_url != st.session_state.bifrost_base_url:
-        st.session_state.bifrost_base_url = base_url
+    if base_url != _state.bifrost_base_url:
+        _state.bifrost_base_url = base_url
+        _state_dirty = True
 
     st.markdown("### Model")
     model_options, model_labels, default_model = get_model_options()
@@ -332,12 +316,13 @@ with st.sidebar:
     selected_model = st.selectbox(
         "Generation Model",
         model_options,
-        index=model_options.index(st.session_state.selected_model) if st.session_state.selected_model in model_options else default_idx,
+        index=model_options.index(_state.selected_model) if _state.selected_model in model_options else default_idx,
         format_func=lambda x: model_labels.get(x, x),
         key="sidebar_model",
     )
-    if selected_model != st.session_state.selected_model:
-        st.session_state.selected_model = selected_model
+    if selected_model != _state.selected_model:
+        _state.selected_model = selected_model
+        _state_dirty = True
 
     config = load_model_config()
     fallback_chain = config.get("fallback_chain", [])
@@ -352,19 +337,21 @@ with st.sidebar:
     with st.expander("DataForSEO (Optional)"):
         dfs_login = st.text_input(
             "Login",
-            value=st.session_state.dataforseo_login,
+            value=_state.dataforseo_login,
             key="sidebar_dfs_login",
         )
         dfs_password = st.text_input(
             "Password",
-            value=st.session_state.dataforseo_password,
+            value=_state.dataforseo_password,
             type="password",
             key="sidebar_dfs_password",
         )
-        if dfs_login != st.session_state.dataforseo_login:
-            st.session_state.dataforseo_login = dfs_login
-        if dfs_password != st.session_state.dataforseo_password:
-            st.session_state.dataforseo_password = dfs_password
+        if dfs_login != _state.dataforseo_login:
+            _state.dataforseo_login = dfs_login
+            _state_dirty = True
+        if dfs_password != _state.dataforseo_password:
+            _state.dataforseo_password = dfs_password
+            _state_dirty = True
 
     st.markdown("---")
     st.markdown("### Help")
@@ -374,6 +361,9 @@ with st.sidebar:
         "- [🐛 Report an issue](https://github.com/rsen-pattern/Collection-Page-Content-Writter/issues)"
     )
     st.caption("v0.1 · Internal agency tool")
+
+    if _state_dirty:
+        save_state(_state)
 
 # Run the selected page
 pg.run()
