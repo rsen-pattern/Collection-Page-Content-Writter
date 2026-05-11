@@ -13,31 +13,35 @@ from core.text_utils import clean_keyword
 _PUNCT_RE = re.compile(r"[^\w\s]")
 
 
-def _normalise_for_dedup(kw: str) -> str:
+def _normalise_for_dedup(kw: str, overrides: Optional[dict] = None) -> str:
     """Normalise a keyword for duplicate detection.
 
-    Lowercases, cleans unicode, strips punctuation, then applies basic
-    English plural-to-singular morphology:
+    When ``overrides`` is provided and the lowercase keyword matches a key,
+    the override value is returned verbatim — this is the escape hatch for
+    brands whose singular vs plural variants target different intents.
+
+    Otherwise: lowercases, cleans unicode, strips punctuation, then applies
+    basic English plural-to-singular morphology:
 
     - ``-ies`` → ``-y``    (categories → category)
+    - ``-sses`` → ``-ss``  (dresses → dress)
+    - ``-ss`` left intact   (dress, glass — never stripped)
     - ``-es`` (>3 chars)   → strip ``-es``    (boxes → box)
     - ``-s`` (>3 chars)    → strip ``-s``     (shirts → shirt)
 
-    Not strict English morphology — designed to catch common ecommerce
-    keyword pairs like singular/plural product names. Words ≤ 3 chars are
-    left untouched so we don't mangle stems like "gas" or "bus".
+    Words ≤ 3 chars left untouched so we don't mangle stems like "gas".
     """
-    cleaned = clean_keyword(kw).lower()
-    cleaned = _PUNCT_RE.sub(" ", cleaned)
+    cleaned_raw = clean_keyword(kw).lower()
+    if overrides and cleaned_raw in overrides:
+        return str(overrides[cleaned_raw])
+    cleaned = _PUNCT_RE.sub(" ", cleaned_raw)
     parts = []
     for word in cleaned.split():
         if len(word) > 3 and word.endswith("ies"):
             parts.append(word[:-3] + "y")
         elif len(word) > 4 and word.endswith("sses"):
-            # boss/bosses, dress/dresses: drop the plural "es" but keep "ss".
             parts.append(word[:-2])
         elif len(word) > 3 and word.endswith("ss"):
-            # dress, glass, brass — never strip a final "ss".
             parts.append(word)
         elif len(word) > 3 and word.endswith("es"):
             parts.append(word[:-2])
@@ -48,17 +52,22 @@ def _normalise_for_dedup(kw: str) -> str:
     return " ".join(parts).strip()
 
 
-def _deduplicate_keywords(primary: str, secondary: list[str]) -> list[str]:
+def _deduplicate_keywords(
+    primary: str,
+    secondary: list[str],
+    overrides: Optional[dict] = None,
+) -> list[str]:
     """Remove secondary keywords that are near-duplicates of primary or each other.
 
     Normalisation uses :func:`_normalise_for_dedup` so plural/singular pairs
     collapse across any vertical (not just cap/hat). Primary is always kept;
-    survivors keep their original ordering.
+    survivors keep their original ordering. ``overrides`` is forwarded to the
+    normaliser so brand-level escape hatches take effect.
     """
-    seen: set[str] = {_normalise_for_dedup(primary)}
+    seen: set[str] = {_normalise_for_dedup(primary, overrides)}
     deduped: list[str] = []
     for kw in secondary:
-        norm = _normalise_for_dedup(kw)
+        norm = _normalise_for_dedup(kw, overrides)
         if norm and norm not in seen:
             seen.add(norm)
             deduped.append(kw)
@@ -85,9 +94,26 @@ class ContentBrief(BaseModel):
     brand_name: str = ""
     store_url: str = ""
     target_market: str = "UK"
-    existing_content: str = ""  # free-form blob, kept for backward compatibility
-    existing_top_copy: str = ""
-    existing_bottom_copy: str = ""
+    existing_content: str = Field(
+        default="",
+        description=(
+            "Free-form reference text. Use for content that isn't clearly "
+            "top-of-page or bottom-of-page (e.g. a pasted paragraph from "
+            "the brief). Kept for backward compatibility."
+        ),
+    )
+    existing_top_copy: str = Field(
+        default="",
+        description=(
+            "Current copy above the product grid on the live page. Surfaced "
+            "to prompts as a labelled section so the model can preserve top-"
+            "vs-bottom voice and so re-generation can target one section."
+        ),
+    )
+    existing_bottom_copy: str = Field(
+        default="",
+        description="Current copy below the product grid on the live page.",
+    )
     past_feedback: str = ""
     prompt_overrides: dict = Field(default_factory=dict)
 
@@ -252,7 +278,10 @@ def build_brief(
         kw.get("keyword", kw) if isinstance(kw, dict) else kw
         for kw in secondary_keywords
     ]
-    deduped_secondary = _deduplicate_keywords(primary_keyword, raw_secondary)
+    dedup_overrides = (prompt_overrides or {}).get("dedup_overrides") or {}
+    deduped_secondary = _deduplicate_keywords(
+        primary_keyword, raw_secondary, overrides=dedup_overrides
+    )
     secondary_kw_list = deduped_secondary[:10]
 
     products_to_link, related_collections, related_blog_posts = _apply_sitemap_fallback(

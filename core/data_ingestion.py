@@ -42,11 +42,34 @@ class CollectionGroup(BaseModel):
     best_rank: Optional[int] = None
     total_clicks: Optional[int] = None
     total_impressions: Optional[int] = None
-    # Hydrated by the Shopify scraper on the Data Input page
-    products_to_link: list[dict] = Field(default_factory=list)
-    scraped_products: list[dict] = Field(default_factory=list)
-    existing_top_copy: str = ""
-    existing_bottom_copy: str = ""
+    # Hydrated by the Shopify scraper on the Data Input page.
+    products_to_link: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Real products from the live page, used as anchor targets in "
+            "generated copy. Populated by the Shopify scraper or by sitemap "
+            "fallback when scraping returns no products."
+        ),
+    )
+    scraped_products: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Full scraped product data including image src and alt text. "
+            "Used by the alt-text generator on the Content Studio."
+        ),
+    )
+    existing_top_copy: str = Field(
+        default="",
+        description=(
+            "Current copy above the product grid on the live page. Stored "
+            "separately from bottom copy so the model can preserve top-vs-"
+            "bottom voice and so re-generation can target one section."
+        ),
+    )
+    existing_bottom_copy: str = Field(
+        default="",
+        description="Current copy below the product grid on the live page.",
+    )
 
 
 class SkippedCollection(BaseModel):

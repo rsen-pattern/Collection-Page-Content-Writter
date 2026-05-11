@@ -258,3 +258,55 @@ class TestKeywordDedupMorphology:
         result = self._dedup("widgets", ["red widget", "blue widget", "widget", "green widget"])
         # "widget" is a dup of "widgets"; the rest keep their order.
         assert result == ["red widget", "blue widget", "green widget"]
+
+
+class TestDedupOverrides:
+    """Brand-level escape hatch for the morphology dedup."""
+
+    def _dedup(self, primary, secondary, overrides=None):
+        from core.brief_builder import _deduplicate_keywords
+        return _deduplicate_keywords(primary, secondary, overrides=overrides)
+
+    def test_no_overrides_merges_singular_plural(self):
+        # Default behaviour from Commit 1 — shirt/shirts collapse.
+        result = self._dedup("shirts", ["shirt"])
+        assert result == []
+
+    def test_overrides_force_distinct_normalisation(self):
+        overrides = {
+            "shirts": "shirts-collection-intent",
+            "shirt": "shirt-product-intent",
+        }
+        result = self._dedup("shirts", ["shirt"], overrides=overrides)
+        assert result == ["shirt"]
+
+    def test_overrides_are_case_insensitive_at_lookup(self):
+        overrides = {"shirts": "x", "shirt": "y"}
+        result = self._dedup("SHIRTS", ["Shirt"], overrides=overrides)
+        assert result == ["Shirt"]
+
+    def test_empty_overrides_falls_through_to_morphology(self):
+        result = self._dedup("shirts", ["shirt"], overrides={})
+        assert result == []
+
+    def test_passes_through_build_brief_from_prompt_overrides(self):
+        """build_brief reads dedup_overrides from prompt_overrides dict."""
+        from core.brief_builder import build_brief
+        brief = build_brief(
+            collection_url="https://x.com/collections/y",
+            collection_name="Y",
+            primary_keyword="shirts",
+            primary_keyword_volume=None,
+            secondary_keywords=[{"keyword": "shirt"}],
+            brand_usps=[],
+            brand_name="X",
+            store_url="",
+            prompt_overrides={
+                "dedup_overrides": {
+                    "shirts": "shirts-distinct",
+                    "shirt": "shirt-distinct",
+                }
+            },
+        )
+        # With overrides, the singular survives dedup.
+        assert "shirt" in brief.secondary_keywords

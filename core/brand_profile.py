@@ -22,6 +22,12 @@ class BrandPromptOverrides:
     alt_text_rules: str = ""
     alt_text_examples: str = ""
     banned_phrases: list = field(default_factory=list)
+    # Explicit normalisation overrides for keyword deduplication. Maps a raw
+    # keyword (case-insensitive) to its preferred normalised form. Useful when
+    # a brand genuinely targets different intents for singular vs plural
+    # variants — e.g. {"gold cap": "gold-cap-distinct", "gold caps": "gold-caps-distinct"}
+    # forces the two to be treated as separate keywords.
+    dedup_overrides: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +36,7 @@ class BrandPromptOverrides:
             "alt_text_rules": self.alt_text_rules,
             "alt_text_examples": self.alt_text_examples,
             "banned_phrases": self.banned_phrases,
+            "dedup_overrides": self.dedup_overrides,
         }
 
     @classmethod
@@ -40,6 +47,7 @@ class BrandPromptOverrides:
             alt_text_rules=data.get("alt_text_rules", ""),
             alt_text_examples=data.get("alt_text_examples", ""),
             banned_phrases=data.get("banned_phrases", []),
+            dedup_overrides=data.get("dedup_overrides", {}),
         )
 
 
@@ -54,6 +62,7 @@ class BrandProfile:
     target_market: str = "UK"
     faq_count: int = 4
     past_feedback: str = ""
+    humanize_by_default: bool = False
     sitemap_url: str = ""
     sitemap_parsed: dict = field(default_factory=dict)
     sitemap_fetched_at: str = ""
@@ -68,6 +77,7 @@ class BrandProfile:
             "target_market": self.target_market,
             "faq_count": self.faq_count,
             "past_feedback": self.past_feedback,
+            "humanize_by_default": self.humanize_by_default,
             "sitemap_url": self.sitemap_url,
             "sitemap_parsed": self.sitemap_parsed,
             "sitemap_fetched_at": self.sitemap_fetched_at,
@@ -86,6 +96,7 @@ class BrandProfile:
             target_market=data.get("target_market", "UK"),
             faq_count=int(data.get("faq_count", 4)),
             past_feedback=data.get("past_feedback", ""),
+            humanize_by_default=bool(data.get("humanize_by_default", False)),
             sitemap_url=data.get("sitemap_url", ""),
             sitemap_parsed=data.get("sitemap_parsed", {}),
             sitemap_fetched_at=data.get("sitemap_fetched_at", ""),
