@@ -8,6 +8,7 @@ from typing import Optional
 import pandas as pd
 
 from core.schema import build_faq_schema, build_itemlist_schema, schema_to_script_tag
+from core.text_utils import extract_collection_handle
 
 
 def _markdown_to_html(text: str) -> str:
@@ -180,7 +181,7 @@ def export_shopify_csv(
         body_html = _build_shopify_body_html(content_with_meta)
 
         url = col.get("collection_url", "")
-        handle = url.rstrip("/").split("/")[-1] if "/collections/" in url else ""
+        handle = extract_collection_handle(url)
 
         rows.append({
             "Handle": handle,
@@ -200,12 +201,18 @@ def export_shopify_csv(
 def export_keyword_map_roundtrip(
     collections: list[dict],
     client_name: str = "",
+    keyword_width: int = 4,
 ) -> io.BytesIO:
     """Export in the same wide format as the keyword mapping document input.
 
     Columns: URL | Target Keyword 1 | Search Volume | Target Keyword 2 |
     Search Volume.1 | ... plus optimized content columns appended on the right.
+
+    ``keyword_width`` controls how many keyword/volume column pairs are
+    emitted (default 4: primary + 3 secondary). Pass the width detected
+    during ingestion so round-trip exports match the source schema exactly.
     """
+    keyword_width = max(int(keyword_width), 1)
     rows = []
     for col in collections:
         content = col.get("content", {})
@@ -222,7 +229,7 @@ def export_keyword_map_roundtrip(
             "Target Keyword 1": col.get("primary_keyword", ""),
             "Search Volume": col.get("primary_keyword_volume") or col.get("search_volume", ""),
         }
-        for idx in range(3):  # Keywords 2, 3, 4
+        for idx in range(keyword_width - 1):
             kw_num = idx + 2
             row[f"Target Keyword {kw_num}"] = sec_kw_list[idx] if idx < len(sec_kw_list) else ""
             row[f"Search Volume.{idx + 1}"] = sec_vol_list[idx] if idx < len(sec_vol_list) else ""

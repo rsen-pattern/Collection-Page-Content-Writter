@@ -126,3 +126,42 @@ class TestAutoScoreCollection:
         assert result.total_score > 0
         assert result.collection_name == "Test"
         assert result.total_score == result.scores.total
+
+
+class TestSubCollectionOpportunities:
+    def _group(self, primary, secondary):
+        from core.data_ingestion import CollectionGroup
+        return CollectionGroup(
+            collection_url=f"https://x.com/collections/{primary.replace(' ', '-')}",
+            collection_name=primary.title(),
+            primary_keyword=primary,
+            secondary_keywords=secondary,
+            total_volume=sum(s.get("search_volume", 0) for s in secondary),
+        )
+
+    def test_returns_modifier_keywords_grouped_by_parent(self):
+        from core.priority_scorer import identify_sub_collection_opportunities
+        groups = [
+            self._group(
+                "necklaces",
+                [
+                    {"keyword": "gold necklaces", "search_volume": 1200},
+                    {"keyword": "silver necklaces", "search_volume": 900},
+                    {"keyword": "low volume thing", "search_volume": 50},
+                ],
+            ),
+        ]
+        opps = identify_sub_collection_opportunities(groups, min_volume=500)
+        # Both ≥500 + modifier matches survive; low-volume row filtered out
+        keywords = {o["keyword"] for o in opps}
+        assert "gold necklaces" in keywords
+        assert "silver necklaces" in keywords
+        assert "low volume thing" not in keywords
+        # Parent metadata round-trips
+        for opp in opps:
+            assert opp["parent_url"] == "https://x.com/collections/necklaces"
+            assert opp["parent_collection"] == "Necklaces"
+
+    def test_empty_groups_returns_empty(self):
+        from core.priority_scorer import identify_sub_collection_opportunities
+        assert identify_sub_collection_opportunities([]) == []

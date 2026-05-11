@@ -15,6 +15,12 @@ from core.sitemap import (
     fetch_sitemap,
     parse_sitemap_file,
 )
+from core.text_utils import clean_keyword
+
+
+def _clean_lines(raw: str) -> list[str]:
+    """Split a textarea string into cleaned, non-empty lines."""
+    return [cleaned for line in raw.split("\n") if (cleaned := clean_keyword(line.strip()))]
 
 st.title("Brand Profiles")
 st.markdown(
@@ -53,7 +59,7 @@ with lc1:
         label_visibility="collapsed",
     )
 with lc2:
-    load_clicked = st.button("Load", use_container_width=True, disabled=(selected_name == "(new profile)"))
+    load_clicked = st.button("Load", width="stretch", disabled=(selected_name == "(new profile)"))
 
 if load_clicked and selected_name != "(new profile)":
     loaded = load_profile(selected_name)
@@ -140,7 +146,7 @@ extract_col, _ = st.columns([1, 3])
 with extract_col:
     extract_clicked = st.button(
         "🔍 Extract bans from feedback",
-        use_container_width=True,
+        width="stretch",
         disabled=not bp_past_feedback.strip(),
         help="Uses Haiku to find specific phrases mentioned as rejected. You'll review before saving.",
     )
@@ -256,7 +262,7 @@ if _pending_parsed and _pending_parsed.total_urls:
                 _pd.DataFrame(
                     [{"title": r.title_guess, "url": r.url} for r in rows[:20]]
                 ),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -364,22 +370,22 @@ with sc1:
             sitemap_url_to_save = bp_sitemap_url.strip() if "bp_sitemap_url" in st.session_state else _loaded.sitemap_url
 
         profile = BrandProfile(
-            brand_name=bp_brand_name.strip(),
+            brand_name=clean_keyword(bp_brand_name.strip()),
             store_url=bp_store_url.strip(),
-            brand_usps=[u.strip() for u in bp_usps.strip().split("\n") if u.strip()],
-            voice_notes=bp_voice_notes.strip(),
+            brand_usps=_clean_lines(bp_usps),
+            voice_notes=clean_keyword(bp_voice_notes.strip()),
             target_market=bp_target_market,
             faq_count=int(bp_faq_count),
-            past_feedback=bp_past_feedback.strip(),
+            past_feedback=clean_keyword(bp_past_feedback.strip()),
             sitemap_url=sitemap_url_to_save,
             sitemap_parsed=sitemap_parsed_dict,
             sitemap_fetched_at=sitemap_fetched_at,
             prompt_overrides=BrandPromptOverrides(
-                brand_custom_rules=bp_custom_rules.strip(),
-                voice_examples=bp_voice_examples.strip(),
-                alt_text_rules=bp_alt_rules.strip(),
-                alt_text_examples=bp_alt_examples.strip(),
-                banned_phrases=[p.strip() for p in bp_banned_phrases.strip().split("\n") if p.strip()],
+                brand_custom_rules=clean_keyword(bp_custom_rules.strip()),
+                voice_examples=clean_keyword(bp_voice_examples.strip()),
+                alt_text_rules=clean_keyword(bp_alt_rules.strip()),
+                alt_text_examples=clean_keyword(bp_alt_examples.strip()),
+                banned_phrases=_clean_lines(bp_banned_phrases),
             ),
         )
         save_profile(profile)
@@ -389,28 +395,71 @@ with sc1:
         st.success(f"Profile saved for **{profile.brand_name}**.")
 
 with sc2:
-    if st.button("📋 Apply to Session", help="Load this profile's settings into the Content Studio session"):
-        brand_usps = [u.strip() for u in bp_usps.strip().split("\n") if u.strip()]
-        st.session_state.client_profile = {
-            "brand_name": bp_brand_name.strip(),
-            "store_url": bp_store_url.strip(),
-            "brand_usps": brand_usps,
-            "voice_notes": bp_voice_notes.strip(),
-            "target_market": bp_target_market,
-            "faq_count": int(bp_faq_count),
-            "past_feedback": bp_past_feedback.strip(),
+    def _build_apply_payload() -> dict:
+        return {
+            "client_profile": {
+                "brand_name": clean_keyword(bp_brand_name.strip()),
+                "store_url": bp_store_url.strip(),
+                "brand_usps": _clean_lines(bp_usps),
+                "voice_notes": clean_keyword(bp_voice_notes.strip()),
+                "target_market": bp_target_market,
+                "faq_count": int(bp_faq_count),
+                "past_feedback": clean_keyword(bp_past_feedback.strip()),
+            },
+            "prompt_overrides": {
+                "brand_custom_rules": clean_keyword(bp_custom_rules.strip()),
+                "voice_examples": clean_keyword(bp_voice_examples.strip()),
+                "alt_text_rules": clean_keyword(bp_alt_rules.strip()),
+                "alt_text_examples": clean_keyword(bp_alt_examples.strip()),
+                "banned_phrases": _clean_lines(bp_banned_phrases),
+            },
         }
-        st.session_state["prompt_overrides"] = {
-            "brand_custom_rules": bp_custom_rules.strip(),
-            "voice_examples": bp_voice_examples.strip(),
-            "alt_text_rules": bp_alt_rules.strip(),
-            "alt_text_examples": bp_alt_examples.strip(),
-            "banned_phrases": [p.strip() for p in bp_banned_phrases.strip().split("\n") if p.strip()],
-        }
+
+    def _apply_brand_payload(payload: dict) -> None:
+        st.session_state.client_profile = payload["client_profile"]
+        st.session_state["prompt_overrides"] = payload["prompt_overrides"]
         # Push sitemap into session so Data Input + Single URL Writer can pick it up.
         pending_sm = st.session_state.get("_bp_pending_sitemap")
         if pending_sm is not None:
             st.session_state["sitemap_parsed"] = pending_sm.to_dict()
         elif _loaded.sitemap_parsed:
             st.session_state["sitemap_parsed"] = _loaded.sitemap_parsed
-        st.success("Profile applied to session. Head to the Content Studio to generate content.")
+
+    if st.button("📋 Apply to Session", help="Load this profile's settings into the Content Studio session"):
+        has_wip = any(
+            st.session_state.get(k)
+            for k in (
+                "collection_groups",
+                "scored_collections",
+                "batch_collections",
+                "generated_content",
+                "audit_results",
+                "scrape_results",
+                "single_url_content",
+            )
+        )
+        if has_wip:
+            st.session_state["_pending_brand_switch"] = _build_apply_payload()
+        else:
+            _apply_brand_payload(_build_apply_payload())
+            st.toast("Profile applied to session.", icon="✅")
+
+if st.session_state.get("_pending_brand_switch"):
+    st.warning(
+        "Switching brands will clear all in-progress work: keyword data, "
+        "scores, batches, audits, generated content, and the Single URL Writer. "
+        "This cannot be undone."
+    )
+    _bs1, _bs2 = st.columns(2)
+    with _bs1:
+        if st.button("✅ Clear and switch", type="primary", key="confirm_brand_switch"):
+            from app import reset_wip_state
+            payload = st.session_state.pop("_pending_brand_switch")
+            reset_wip_state()
+            _apply_brand_payload(payload)
+            st.success("Switched to new brand.")
+            st.rerun()
+    with _bs2:
+        if st.button("Cancel", key="cancel_brand_switch"):
+            st.session_state.pop("_pending_brand_switch", None)
+            st.rerun()

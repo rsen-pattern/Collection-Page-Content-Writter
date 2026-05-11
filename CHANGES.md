@@ -1,5 +1,106 @@
 # Changes
 
+## Update — Logic fixes (correctness, behaviour, new features)
+
+Twelve issues from a logic review, landed across three commits.
+
+### Correctness fixes (Commit 1)
+
+- New `core/text_utils.py` with `clean_keyword`, `extract_collection_handle`,
+  `extract_collection_name`, `ensure_v1_path`. Replaces duplicated inline
+  implementations across `data_ingestion`, `scraper`, `auditor`, `exporter`,
+  `content_generator`, `feedback_extractor`, and several pages.
+- `clean_keyword` applied at every text-input boundary (primary keyword
+  swap on Data Input; collection name, primary, secondary keywords on
+  Single URL Writer; USPs / banned phrases / voice / brand name / past
+  feedback on Brand Profile; FAQ Q&A, headings, tags on Content Studio;
+  scraped product names / alt text / existing copy / meta fields in
+  `scraper`).
+- `ensure_v1_path` uses proper URL parsing — fixes a base URL like
+  `/v1/foo` becoming `/v1/foo/v1` because the previous positional
+  suffix check ignored deeper path segments.
+- `app.init_session_state` rebuilt: every default constructed fresh per
+  call so mutating `client_profile` in place no longer taints a future
+  initialisation. New `WIP_DEFAULT_FACTORIES` registry + `reset_wip_state`
+  helper used by the brand-switch flow.
+- `_PLURAL_SUFFIXES` hardcoded list replaced with `_normalise_for_dedup` —
+  handles `-ies` → `-y`, `-es` strip, `-s` strip, preserves `-ss`
+  (dress, glass), protects 3-character stems (gas, bus).
+- Replaced deprecated `use_container_width=True/False` with
+  `width="stretch"/"content"` across all pages.
+
+**Files touched:** `core/text_utils.py` (new), `core/data_ingestion.py`,
+`core/scraper.py`, `core/exporter.py`, `core/brief_builder.py`,
+`core/content_generator.py`, `core/feedback_extractor.py`,
+`app.py`, `pages/0_🏷️_Brand_Profile.py`, `pages/1_📊_Data_Input.py`,
+`pages/2_🎯_Priority_Scoring.py`, `pages/3_🔍_Audit.py`,
+`pages/4_✍️_Content_Studio.py`, `pages/6_✏️_Single_URL_Writer.py`,
+`tests/test_text_utils.py` (new), `tests/test_app.py` (new),
+`tests/test_brief_builder.py`.
+
+### Behaviour fixes (Commit 2)
+
+- `batch_faq_topics` resets when the batch composition changes in
+  Priority Scoring; regenerating FAQs for a single collection drops that
+  collection's own prior questions from the exclusion list so the model
+  isn't artificially constrained.
+- "📋 Apply to Session" on Brand Profile now gates on a confirmation
+  when WIP state exists (collections, batch, generated content, audits,
+  Single URL Writer). Uses `reset_wip_state` — credentials, model,
+  DataForSEO creds are never touched.
+- Test Run mode is now a hard cap of 2 collections. The Confirm button
+  disables, an inline error explains why, and a banner at the top of
+  Priority Scoring surfaces the active model.
+- `ContentBrief` gained `existing_top_copy` / `existing_bottom_copy`.
+  `build_briefs_for_batch` populates them structurally rather than
+  concatenating into a blob. New `_existing_content_block` helper in
+  `content_generator` emits labelled sections so the model sees which
+  part is top vs bottom; whole block is omitted when nothing is provided.
+- `FallbackScrapeResult` gained `all_attempts` keyed by tier name. The
+  Audit page surfaces a "pick a tier manually" expander when no tier
+  hit ≥2 fields, with per-tier field counts and one-click apply.
+- `export_keyword_map_roundtrip` accepts `keyword_width` and emits that
+  many keyword/volume column pairs instead of hardcoding 4. Data Input
+  stores `source_keyword_width` during keyword_map ingestion; Export
+  page passes it through.
+
+**Files touched:** `core/brief_builder.py`, `core/content_generator.py`,
+`core/scraper.py`, `core/exporter.py`, `pages/0_🏷️_Brand_Profile.py`,
+`pages/1_📊_Data_Input.py`, `pages/2_🎯_Priority_Scoring.py`,
+`pages/3_🔍_Audit.py`, `pages/4_✍️_Content_Studio.py`,
+`pages/5_📦_Export.py`, `tests/test_brief_builder.py`,
+`tests/test_content_generator.py`, `tests/test_scraper.py`,
+`tests/test_exporter.py` (new).
+
+### New behaviour (Commit 3)
+
+- Sub-collection opportunities now wired into project lifecycle.
+  Priority Scoring computes opportunities once, surfaces a `💡 N sub-opps`
+  badge next to each collection that has them, and an inline expander
+  shows the modifier keywords + volumes. Export page gains a
+  "Sub-Collection Opportunities for Next Phase" section with a CSV
+  download (keyword, search_volume, parent_collection, parent_url,
+  suggested_handle) so the agency walks away with a next-month scope
+  artefact. Sub-opportunities are deliberately NOT shown inside Content
+  Studio.
+- New `core/telemetry.py` with `log_event` and `timed` context manager.
+  Emits single-line JSON to stdout (caught by Streamlit Cloud's log
+  viewer). Wired into `_call_bifrost` (`bifrost_call` per request with
+  `model`, `generation_type`, `duration_ms`, `status`), `generate_content`
+  and `humanize_content` (`model_fallback` when a non-primary model
+  succeeds), `scrape_with_fallback` (`scrape_attempt` per tier),
+  `feedback_extractor.extract_banned_phrases` (`feedback_extraction`
+  with `phrase_count`, `feedback_length`, `model`). Never logs raw
+  prompts, responses, API keys, USPs, or voice notes. `print` failure
+  is swallowed silently.
+
+**Files touched:** `core/telemetry.py` (new), `core/content_generator.py`,
+`core/scraper.py`, `core/feedback_extractor.py`,
+`pages/2_🎯_Priority_Scoring.py`, `pages/5_📦_Export.py`,
+`tests/test_telemetry.py` (new), `tests/test_priority_scorer.py`.
+
+---
+
 ## Update — UI/UX polish from heuristic audit
 
 Eleven small UX fixes landed together. None change behaviour or data

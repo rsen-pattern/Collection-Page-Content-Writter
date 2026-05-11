@@ -134,8 +134,10 @@ class TestBuildBriefsBatch:
             "existing_bottom_copy": "Bottom copy here.",
         }]
         briefs = build_briefs_for_batch(collections, profile)
-        assert "Top copy here." in briefs[0].existing_content
-        assert "Bottom copy here." in briefs[0].existing_content
+        # After the existing_content split, top/bottom are kept on their
+        # own structured fields rather than concatenated.
+        assert briefs[0].existing_top_copy == "Top copy here."
+        assert briefs[0].existing_bottom_copy == "Bottom copy here."
 
 
 class TestSitemapFallback:
@@ -216,3 +218,43 @@ class TestSitemapFallback:
         )
         assert brief.products_to_link == []
         assert brief.related_blog_posts == []
+
+
+class TestKeywordDedupMorphology:
+    def _dedup(self, primary, secondary):
+        from core.brief_builder import _deduplicate_keywords
+        return _deduplicate_keywords(primary, secondary)
+
+    def test_shirt_shirts_dedups(self):
+        result = self._dedup("shirts", ["shirt", "cotton shirt"])
+        # "shirt" is a duplicate of "shirts"; "cotton shirt" survives
+        assert "shirt" not in result
+        assert "cotton shirt" in result
+
+    def test_category_categories_dedups(self):
+        result = self._dedup("categories", ["category"])
+        assert result == []
+
+    def test_box_boxes_dedups(self):
+        result = self._dedup("boxes", ["box"])
+        assert result == []
+
+    def test_cap_caps_dedups(self):
+        result = self._dedup("caps", ["cap"])
+        assert result == []
+
+    def test_dress_dresses_dedups(self):
+        result = self._dedup("dresses", ["dress"])
+        assert result == []
+
+    def test_short_words_not_stripped(self):
+        # "gas" / "bus" must remain intact when used alone — too short to
+        # trim the trailing 's' without producing garbage stems.
+        from core.brief_builder import _normalise_for_dedup
+        assert _normalise_for_dedup("gas") == "gas"
+        assert _normalise_for_dedup("bus") == "bus"
+
+    def test_preserves_ordering_of_survivors(self):
+        result = self._dedup("widgets", ["red widget", "blue widget", "widget", "green widget"])
+        # "widget" is a dup of "widgets"; the rest keep their order.
+        assert result == ["red widget", "blue widget", "green widget"]

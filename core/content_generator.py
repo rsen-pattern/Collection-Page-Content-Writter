@@ -41,6 +41,36 @@ def _load_methodology_rules() -> dict:
         return json.load(f)
 
 
+def _existing_content_block(brief: ContentBrief) -> str:
+    """Build the EXISTING CONTENT prompt block with labelled top/bottom/other sections.
+
+    Returns an empty string when none of ``existing_top_copy``,
+    ``existing_bottom_copy``, or ``existing_content`` are populated, so the
+    section is omitted entirely from the rendered prompt.
+    """
+    top = (getattr(brief, "existing_top_copy", "") or "").strip()
+    bottom = (getattr(brief, "existing_bottom_copy", "") or "").strip()
+    other = (brief.existing_content or "").strip()
+    if not (top or bottom or other):
+        return ""
+
+    sections = []
+    if top:
+        sections.append(f"--- CURRENT TOP-OF-PAGE COPY ---\n{top}")
+    if bottom:
+        sections.append(f"--- CURRENT BOTTOM-OF-PAGE COPY ---\n{bottom}")
+    if other:
+        sections.append(f"--- OTHER EXISTING CONTENT ---\n{other}")
+    body = "\n\n".join(sections)
+    return (
+        "\nEXISTING CONTENT (reference for tone, details, and improvement):\n\n"
+        f"{body}\n\n"
+        "Use the content above as reference — retain any brand-specific facts, "
+        "product details, or tone that works well, but rewrite and improve "
+        "rather than copying.\n"
+    )
+
+
 def build_system_prompt(brief: ContentBrief) -> str:
     """Build the system prompt from template and brief data."""
     from core.brand_profile import build_brand_custom_context
@@ -115,15 +145,7 @@ def build_full_brief_prompt(
             f"{', '.join(batch_faq_topics)}"
         )
 
-    existing_content_block = ""
-    if brief.existing_content:
-        existing_content_block = (
-            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
-            "The page currently has the following content. Use it as context — retain any "
-            "brand-specific facts, product details, or tone that works well, but rewrite and "
-            "improve rather than copying:\n"
-            f"```\n{brief.existing_content}\n```\n"
-        )
+    existing_content_block = _existing_content_block(brief)
 
     bottom_target = brief.target_bottom_word_count
     bottom_min = max(int(bottom_target * 0.75), 75)
@@ -186,15 +208,7 @@ def build_description_prompt(
         else "No related blog posts provided — omit the optional blog link."
     )
 
-    existing_content_block = ""
-    if brief.existing_content:
-        existing_content_block = (
-            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
-            "The page currently has the following content. Use it as context — retain any "
-            "brand-specific facts, product details, or tone that works well, but rewrite and "
-            "improve rather than copying:\n"
-            f"```\n{brief.existing_content}\n```\n"
-        )
+    existing_content_block = _existing_content_block(brief)
 
     return template.format(
         collection_name=brief.collection_name,
@@ -246,15 +260,7 @@ def build_bottom_copy_prompt(brief: ContentBrief) -> str:
         else "No related blog posts provided — omit the optional blog link."
     )
 
-    existing_content_block = ""
-    if brief.existing_content:
-        existing_content_block = (
-            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
-            "The page currently has the following content. Use it as context — retain any "
-            "brand-specific facts, product details, or tone that works well, but rewrite and "
-            "improve rather than copying:\n"
-            f"```\n{brief.existing_content}\n```\n"
-        )
+    existing_content_block = _existing_content_block(brief)
 
     return template.format(
         collection_name=brief.collection_name,
@@ -472,15 +478,38 @@ def _call_bifrost(
     model: str,
     system_prompt: str,
     user_prompt: str,
+    generation_type: str = "",
 ) -> str:
     """Make a single call to Bifrost and return the response text."""
-    response = client.chat.completions.create(
+    from core.telemetry import log_event
+    import time as _time
+
+    _t0 = _time.monotonic()
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=2000,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except Exception as e:
+        log_event(
+            "bifrost_call",
+            model=model,
+            generation_type=generation_type,
+            duration_ms=int((_time.monotonic() - _t0) * 1000),
+            status="error",
+            error_type=type(e).__name__,
+        )
+        raise
+    log_event(
+        "bifrost_call",
         model=model,
-        max_tokens=2000,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        generation_type=generation_type,
+        duration_ms=int((_time.monotonic() - _t0) * 1000),
+        status="ok",
     )
     return response.choices[0].message.content
 
@@ -512,9 +541,9 @@ def humanize_content(
         Tuple of (humanized_text, model_used)
     """
     from openai import OpenAI
+    from core.text_utils import ensure_v1_path
 
-    if not base_url.rstrip("/").endswith("/v1"):
-        base_url = base_url.rstrip("/") + "/v1"
+    base_url = ensure_v1_path(base_url)
 
     client = OpenAI(api_key=api_key, base_url=base_url)
 
@@ -534,7 +563,10 @@ def humanize_content(
 
     for attempt_model in models_to_try:
         try:
-            response_text = _call_bifrost(client, attempt_model, system_prompt, user_prompt)
+            response_text = _call_bifrost(
+                client, attempt_model, system_prompt, user_prompt,
+                generation_type="humanize",
+            )
             used_model = attempt_model
             break
         except Exception as e:
@@ -545,6 +577,16 @@ def humanize_content(
         raise RuntimeError(
             f"Humanizer: all models failed. Tried: {', '.join(models_to_try)}. "
             f"Last error: {last_error}"
+        )
+
+    if used_model != model:
+        from core.telemetry import log_event
+        log_event(
+            "model_fallback",
+            attempted=model,
+            succeeded=used_model,
+            error=str(last_error) if last_error else "",
+            generation_type="humanize",
         )
 
     return response_text.strip(), used_model
@@ -574,11 +616,11 @@ def generate_content(
         base_url: Bifrost API base URL
     """
     from openai import OpenAI
+    from core.text_utils import ensure_v1_path
 
-    # OpenAI SDK appends /chat/completions to base_url.
-    # Bifrost expects /v1/chat/completions, so ensure base_url ends with /v1
-    if not base_url.rstrip("/").endswith("/v1"):
-        base_url = base_url.rstrip("/") + "/v1"
+    # OpenAI SDK appends /chat/completions to base_url; Bifrost expects
+    # /v1/chat/completions, so we ensure /v1 is the last path segment.
+    base_url = ensure_v1_path(base_url)
 
     client = OpenAI(api_key=api_key, base_url=base_url)
     system_prompt = build_system_prompt(brief)
@@ -611,7 +653,10 @@ def generate_content(
 
     for attempt_model in models_to_try:
         try:
-            response_text = _call_bifrost(client, attempt_model, system_prompt, user_prompt)
+            response_text = _call_bifrost(
+                client, attempt_model, system_prompt, user_prompt,
+                generation_type=generation_type,
+            )
             used_model = attempt_model
             break
         except Exception as e:
@@ -622,6 +667,16 @@ def generate_content(
         raise RuntimeError(
             f"All models failed. Tried: {', '.join(models_to_try)}. "
             f"Last error: {last_error}"
+        )
+
+    if used_model != model:
+        from core.telemetry import log_event
+        log_event(
+            "model_fallback",
+            attempted=model,
+            succeeded=used_model,
+            error=str(last_error) if last_error else "",
+            generation_type=generation_type,
         )
 
     result = GeneratedContent(

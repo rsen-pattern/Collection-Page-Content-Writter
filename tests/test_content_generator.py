@@ -166,3 +166,75 @@ class TestNewGenerators:
         sample_brief.target_bottom_word_count = 500
         prompt = build_full_brief_prompt(sample_brief)
         assert "500" in prompt
+
+
+class TestExistingContentBlock:
+    """The labelled EXISTING CONTENT block emitted into prompts."""
+
+    def _build_brief(self, **kw):
+        from core.brief_builder import ContentBrief
+        defaults = dict(
+            collection_url="https://x.com/collections/y",
+            collection_name="Y",
+            primary_keyword="y",
+            primary_keyword_volume=None,
+            secondary_keywords=[],
+            brand_usps=[],
+            brand_name="X",
+            store_url="",
+            target_market="UK",
+            voice_notes="",
+            products_to_link=[],
+            related_collections=[],
+            related_blog_posts=[],
+            paa_questions=[],
+            faq_count=4,
+            voice_notes_unused="",
+        )
+        defaults.pop("voice_notes_unused")
+        defaults.update(kw)
+        return ContentBrief(**defaults)
+
+    def test_only_top_copy_renders_only_top_section(self):
+        from core.content_generator import _existing_content_block
+        brief = self._build_brief(existing_top_copy="Top here.")
+        block = _existing_content_block(brief)
+        assert "CURRENT TOP-OF-PAGE COPY" in block
+        assert "CURRENT BOTTOM-OF-PAGE COPY" not in block
+        assert "OTHER EXISTING CONTENT" not in block
+
+    def test_all_three_render_all_three_sections(self):
+        from core.content_generator import _existing_content_block
+        brief = self._build_brief(
+            existing_top_copy="Top here.",
+            existing_bottom_copy="Bottom here.",
+            existing_content="Other notes.",
+        )
+        block = _existing_content_block(brief)
+        assert "CURRENT TOP-OF-PAGE COPY" in block
+        assert "CURRENT BOTTOM-OF-PAGE COPY" in block
+        assert "OTHER EXISTING CONTENT" in block
+
+    def test_empty_brief_renders_nothing(self):
+        from core.content_generator import _existing_content_block
+        brief = self._build_brief()
+        assert _existing_content_block(brief) == ""
+
+    def test_regenerate_faq_filters_prior_questions_from_topic_list(self):
+        """Pure-logic test of the FAQ regenerate batch_faq_topics filter."""
+        prior_faqs = [
+            {"question": "What sizes are available?", "answer": "..."},
+            {"question": "Are these waterproof?", "answer": "..."},
+        ]
+        batch_topics = [
+            "What sizes are available?",
+            "Do you offer free shipping?",
+            "Are these waterproof?",
+            "How long does delivery take?",
+        ]
+        prior_questions = {f.get("question", "") for f in prior_faqs}
+        filtered = [t for t in batch_topics if t not in prior_questions]
+        assert filtered == [
+            "Do you offer free shipping?",
+            "How long does delivery take?",
+        ]

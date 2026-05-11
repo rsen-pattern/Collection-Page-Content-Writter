@@ -42,55 +42,99 @@ def get_secret(key: str, default: str = "") -> str:
         return default
 
 
-def init_session_state():
-    """Initialize all session state variables."""
-    defaults = {
-        # Client profile
-        "client_profile": {
-            "brand_name": "",
-            "store_url": "",
-            "brand_usps": [],
-            "voice_notes": "",
-            "target_market": "UK",
-            "faq_count": 4,
-            "past_feedback": "",
-        },
-        # Data
-        "raw_data": None,
-        "normalized_data": None,
-        "source_format": None,
-        "collection_groups": [],
-        "skipped_collections": [],
-        # Scoring
-        "scored_collections": [],
-        "batch_collections": [],
-        "batch_mode": "",
-        # Audit
-        "audit_results": {},
-        "scrape_results": {},
-        "scrape_tiers": {},
-        "sf_crawl_data": {},
-        # Scraper API keys — optional, tiers without a key are skipped
-        "webscraping_ai_key": get_secret("WEBSCRAPING_AI_KEY", ""),
-        "scraperapi_key": get_secret("SCRAPERAPI_KEY", ""),
-        # Content
-        "content_briefs": {},
-        "generated_content": {},
-        "batch_faq_topics": [],
-        # Export
-        "implementation_tracker": {},
-        # Bifrost API config — load from secrets first, then allow override
-        # Supports both BIFROST_API_KEY and BIFROST_KEY secret names
-        "bifrost_api_key": get_secret("BIFROST_API_KEY") or get_secret("BIFROST_KEY"),
-        "bifrost_base_url": get_secret("BIFROST_BASE_URL", "https://bifrost.pattern.com"),
-        "selected_model": get_secret("BIFROST_DEFAULT_MODEL", "anthropic/claude-sonnet-4-6"),
-        # DataForSEO (optional)
-        "dataforseo_login": get_secret("DATAFORSEO_LOGIN"),
-        "dataforseo_password": get_secret("DATAFORSEO_PASSWORD"),
+def _default_client_profile() -> dict:
+    """Fresh client_profile dict — built per call so callers can't mutate a shared template."""
+    return {
+        "brand_name": "",
+        "store_url": "",
+        "brand_usps": [],
+        "voice_notes": "",
+        "target_market": "UK",
+        "faq_count": 4,
+        "past_feedback": "",
     }
-    for key, value in defaults.items():
+
+
+# Session keys considered "project work-in-progress". The brand-switch
+# reset path uses this list; init_session_state() seeds these to fresh
+# empties on first load. API credentials and model selection are NOT in
+# this list and are never cleared on brand switch.
+WIP_DEFAULT_FACTORIES = {
+    "raw_data": lambda: None,
+    "normalized_data": lambda: None,
+    "source_format": lambda: None,
+    "collection_groups": list,
+    "skipped_collections": list,
+    "scored_collections": list,
+    "batch_collections": list,
+    "batch_mode": lambda: "",
+    "audit_results": dict,
+    "scrape_results": dict,
+    "scrape_tiers": dict,
+    "sf_crawl_data": dict,
+    "content_briefs": dict,
+    "generated_content": dict,
+    "batch_faq_topics": list,
+    "implementation_tracker": dict,
+    "single_url_content": dict,
+    "single_url_history": list,
+}
+
+
+def init_session_state():
+    """Initialize all session state variables.
+
+    Each value is constructed fresh (factories / fresh literals) so a caller
+    mutating ``client_profile`` in place can't taint the next initialisation.
+    """
+    if "client_profile" not in st.session_state:
+        st.session_state["client_profile"] = _default_client_profile()
+
+    for key, factory in WIP_DEFAULT_FACTORIES.items():
         if key not in st.session_state:
-            st.session_state[key] = value
+            st.session_state[key] = factory()
+
+    # Scraper API keys — optional, tiers without a key are skipped.
+    if "webscraping_ai_key" not in st.session_state:
+        st.session_state["webscraping_ai_key"] = get_secret("WEBSCRAPING_AI_KEY", "")
+    if "scraperapi_key" not in st.session_state:
+        st.session_state["scraperapi_key"] = get_secret("SCRAPERAPI_KEY", "")
+
+    # Bifrost API config — supports both BIFROST_API_KEY and BIFROST_KEY names.
+    if "bifrost_api_key" not in st.session_state:
+        st.session_state["bifrost_api_key"] = (
+            get_secret("BIFROST_API_KEY") or get_secret("BIFROST_KEY")
+        )
+    if "bifrost_base_url" not in st.session_state:
+        st.session_state["bifrost_base_url"] = get_secret(
+            "BIFROST_BASE_URL", "https://bifrost.pattern.com"
+        )
+    if "selected_model" not in st.session_state:
+        st.session_state["selected_model"] = get_secret(
+            "BIFROST_DEFAULT_MODEL", "anthropic/claude-sonnet-4-6"
+        )
+
+    # DataForSEO (optional)
+    if "dataforseo_login" not in st.session_state:
+        st.session_state["dataforseo_login"] = get_secret("DATAFORSEO_LOGIN")
+    if "dataforseo_password" not in st.session_state:
+        st.session_state["dataforseo_password"] = get_secret("DATAFORSEO_PASSWORD")
+
+
+def reset_wip_state() -> None:
+    """Reset every work-in-progress session key to its declared default.
+
+    Does not touch API credentials, model selection, DataForSEO credentials,
+    or client_profile (callers replace client_profile explicitly with the new
+    brand). Safe to call multiple times.
+    """
+    for key, factory in WIP_DEFAULT_FACTORIES.items():
+        st.session_state[key] = factory()
+    # Sitemap is per-brand and lives outside WIP_DEFAULT_FACTORIES so the
+    # Brand Profile page can repopulate it without flicker. Clear it here.
+    st.session_state.pop("sitemap_parsed", None)
+    # Discard prompt_overrides — they belong to the previous brand.
+    st.session_state.pop("prompt_overrides", None)
 
 
 init_session_state()

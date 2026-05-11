@@ -144,7 +144,7 @@ for sc in scored:
 df = pd.DataFrame(table_data)
 st.dataframe(
     df,
-    use_container_width=True,
+    width="stretch",
     hide_index=True,
     column_config={
         "Total Score": st.column_config.ProgressColumn(
@@ -245,6 +245,13 @@ mode = st.radio(
     help=MODE_HELP,
 )
 
+if "Test Run" in mode:
+    _model_label = st.session_state.get("selected_model", "default model")
+    st.info(
+        f"🧪 **Test Run mode** — limited to 2 collections. Uses your selected model "
+        f"(`{_model_label}`). Switch to Standard Batch or Full Run when you're ready to scale."
+    )
+
 # Select All / Clear All for Full Run mode
 if "Full Run" in mode:
     sa_col1, sa_col2, _ = st.columns([1, 1, 4])
@@ -259,14 +266,33 @@ if "Full Run" in mode:
                 st.session_state[f"batch_{i}"] = False
             st.rerun()
 
+# ── Sub-collection opportunities indexed per parent for inline badges ─────
+opps_for_badges = identify_sub_collection_opportunities(
+    st.session_state.collection_groups
+)
+opps_by_parent: dict[str, list[dict]] = {}
+for _opp in opps_for_badges:
+    opps_by_parent.setdefault(_opp["parent_url"], []).append(_opp)
+st.session_state.sub_collection_opportunities = opps_by_parent
+
 batch_selections = []
 for i, sc in enumerate(scored):
+    _opps_for_row = opps_by_parent.get(sc.collection_url, [])
+    _badge = (
+        f" 💡 {len(_opps_for_row)} sub-opp{'s' if len(_opps_for_row) != 1 else ''}"
+        if _opps_for_row
+        else ""
+    )
     selected = st.checkbox(
-        f"{sc.collection_name} (Score: {sc.total_score}/18, Vol: {sc.total_volume:,})",
+        f"{sc.collection_name} (Score: {sc.total_score}/18, Vol: {sc.total_volume:,}){_badge}",
         value=sc.in_batch,
         key=f"batch_{i}",
     )
     batch_selections.append(selected)
+    if _opps_for_row:
+        with st.expander(f"💡 Sub-collection ideas for {sc.collection_name}", expanded=False):
+            for _opp in _opps_for_row:
+                st.caption(f"• **{_opp['keyword']}** — {_opp['volume']:,} searches/mo")
 
 selected_count = sum(batch_selections)
 
@@ -310,7 +336,20 @@ mode_label = {
     "Full Run" in mode: "Confirm Full Run",
 }.get(True, "Confirm Batch")
 
-if st.button(mode_label, type="primary", disabled=selected_count < 1):
+# Test Run is now a hard cap rather than an advisory. Disable confirmation
+# when the user has selected more than 2 collections under Test Run mode.
+test_run_blocked = "Test Run" in mode and selected_count > 2
+if test_run_blocked:
+    st.error(
+        "Test Run is limited to 2 collections. Uncheck some to proceed, "
+        "or switch to **Standard Batch** / **Full Run**."
+    )
+
+if st.button(
+    mode_label,
+    type="primary",
+    disabled=(selected_count < 1 or test_run_blocked),
+):
     batch = []
     for i, selected in enumerate(batch_selections):
         scored[i].in_batch = selected
@@ -329,6 +368,13 @@ if st.button(mode_label, type="primary", disabled=selected_count < 1):
                 "priority_score": scored[i].total_score,
             })
 
+    # When the batch composition changes, drop the in-batch FAQ
+    # exclusion list so the new batch isn't artificially constrained.
+    new_urls = {b["collection_url"] for b in batch}
+    old_urls = {b["collection_url"] for b in st.session_state.get("batch_collections", [])}
+    if new_urls != old_urls:
+        st.session_state.batch_faq_topics = []
+
     st.session_state.batch_collections = batch
     st.session_state.batch_mode = mode
     st.success(f"Confirmed: {len(batch)} collections ready.")
@@ -345,7 +391,7 @@ opportunities = identify_sub_collection_opportunities(
 if opportunities:
     st.markdown(f"**{len(opportunities)} potential sub-collection keywords** identified:")
     opp_df = pd.DataFrame(opportunities)
-    st.dataframe(opp_df, use_container_width=True, hide_index=True)
+    st.dataframe(opp_df, width="stretch", hide_index=True)
 else:
     st.info(
         "No sub-collection opportunities detected with significant volume. "
