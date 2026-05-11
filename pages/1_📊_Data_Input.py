@@ -303,6 +303,11 @@ if uploaded_file is not None:
             if st.button("Process Data", type="primary", disabled=not profile_valid):
                 with st.spinner(f"Processing {len(raw_df)} rows…"):
                     groups, skipped = normalize_keyword_map(raw_df)
+                    # Record the input's keyword column width so the
+                    # round-trip exporter mirrors the source schema.
+                    st.session_state.source_keyword_width = (
+                        max(len(g.secondary_keywords) + 1 for g in groups) if groups else 4
+                    )
 
                 no_kw_count = sum(1 for s in skipped if s.reason == "no_keywords")
                 zero_vol_count = sum(1 for s in skipped if s.reason == "zero_volume")

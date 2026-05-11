@@ -75,6 +75,11 @@ class FallbackScrapeResult:
     data: ScrapedPageData
     tier_used: str          # 'direct' | 'webscraping_ai' | 'scraperapi' | 'failed'
     tiers_attempted: list = field(default_factory=list)
+    # Populated with every tier's result so the Single URL Writer can let
+    # the user pick a partial result manually. The bulk pipeline ignores
+    # this field. Keys are tier names; missing keys mean the tier was
+    # skipped (no API key).
+    all_attempts: dict = field(default_factory=dict)
 
 
 def _parse_html_to_scraped_data(url: str, html: str) -> ScrapedPageData:
@@ -237,13 +242,17 @@ def scrape_with_fallback(
     A tier with an empty key is skipped silently.
     """
     attempted: list[str] = []
+    all_attempts: dict[str, ScrapedPageData] = {}
 
     # ── Tier 1: Direct requests ──────────────────────────────────────────
     attempted.append("direct")
     t1 = scrape_collection_page(url, timeout=timeout)
+    all_attempts["direct"] = t1
 
     if t1.success and t1.fields_found >= 2:
-        return FallbackScrapeResult(data=t1, tier_used="direct", tiers_attempted=attempted)
+        return FallbackScrapeResult(
+            data=t1, tier_used="direct", tiers_attempted=attempted, all_attempts=all_attempts
+        )
 
     blocked = not t1.success and t1.error and any(
         x in str(t1.error) for x in ["403", "401", "429", "blocked", "Connection"]
@@ -251,7 +260,9 @@ def scrape_with_fallback(
     low_fields = t1.fields_found < 2
 
     if not (blocked or low_fields):
-        return FallbackScrapeResult(data=t1, tier_used="direct", tiers_attempted=attempted)
+        return FallbackScrapeResult(
+            data=t1, tier_used="direct", tiers_attempted=attempted, all_attempts=all_attempts
+        )
 
     t2 = t3 = None
 
@@ -259,20 +270,37 @@ def scrape_with_fallback(
     if webscraping_ai_key:
         attempted.append("webscraping_ai")
         t2 = scrape_via_webscraping_ai(url, webscraping_ai_key, timeout=timeout + 5)
+        all_attempts["webscraping_ai"] = t2
         if t2.success and t2.fields_found >= 2:
-            return FallbackScrapeResult(data=t2, tier_used="webscraping_ai", tiers_attempted=attempted)
+            return FallbackScrapeResult(
+                data=t2,
+                tier_used="webscraping_ai",
+                tiers_attempted=attempted,
+                all_attempts=all_attempts,
+            )
 
     # ── Tier 3: ScraperAPI ────────────────────────────────────────────────
     if scraperapi_key:
         attempted.append("scraperapi")
         t3 = scrape_via_scraperapi(url, scraperapi_key, timeout=timeout + 5)
+        all_attempts["scraperapi"] = t3
         if t3.success and t3.fields_found >= 2:
-            return FallbackScrapeResult(data=t3, tier_used="scraperapi", tiers_attempted=attempted)
+            return FallbackScrapeResult(
+                data=t3,
+                tier_used="scraperapi",
+                tiers_attempted=attempted,
+                all_attempts=all_attempts,
+            )
 
     # ── All tiers failed — return best partial result ─────────────────────
     candidates = [r for r in [t1, t2, t3] if r is not None]
     best = max(candidates, key=lambda r: r.fields_found)
-    return FallbackScrapeResult(data=best, tier_used="failed", tiers_attempted=attempted)
+    return FallbackScrapeResult(
+        data=best,
+        tier_used="failed",
+        tiers_attempted=attempted,
+        all_attempts=all_attempts,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

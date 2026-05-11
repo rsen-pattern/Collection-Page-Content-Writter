@@ -135,3 +135,44 @@ class TestFetchCollectionData:
         assert result.source == "html"
         assert result.h1 == "Quencher"
         assert len(result.products) == 0
+
+
+class TestFallbackAllAttempts:
+    """scrape_with_fallback records every tier attempt in all_attempts."""
+
+    def test_all_attempts_keyed_by_tier_when_all_fail(self, monkeypatch):
+        from core import scraper
+
+        def make_failed(url, *args, **kwargs):
+            return scraper.ScrapedPageData(url=url, error="HTTP 403")
+
+        def make_partial(url, *args, **kwargs):
+            return scraper.ScrapedPageData(url=url, seo_title="T")
+
+        monkeypatch.setattr(scraper, "scrape_collection_page", make_failed)
+        monkeypatch.setattr(scraper, "scrape_via_webscraping_ai", make_partial)
+        monkeypatch.setattr(scraper, "scrape_via_scraperapi", make_failed)
+
+        fallback = scraper.scrape_with_fallback(
+            "https://x.com/collections/y",
+            webscraping_ai_key="k1",
+            scraperapi_key="k2",
+        )
+        assert fallback.tier_used == "failed"
+        # Direct + both tiers were attempted
+        assert set(fallback.all_attempts.keys()) == {"direct", "webscraping_ai", "scraperapi"}
+        assert fallback.all_attempts["direct"].error == "HTTP 403"
+        assert fallback.all_attempts["webscraping_ai"].seo_title == "T"
+
+    def test_all_attempts_only_records_tiers_actually_run(self, monkeypatch):
+        from core import scraper
+
+        def make_failed(url, *args, **kwargs):
+            return scraper.ScrapedPageData(url=url, error="HTTP 403")
+
+        monkeypatch.setattr(scraper, "scrape_collection_page", make_failed)
+        # No API keys → tiers 2 and 3 are skipped
+        fallback = scraper.scrape_with_fallback("https://x.com/collections/y")
+        assert "direct" in fallback.all_attempts
+        assert "webscraping_ai" not in fallback.all_attempts
+        assert "scraperapi" not in fallback.all_attempts

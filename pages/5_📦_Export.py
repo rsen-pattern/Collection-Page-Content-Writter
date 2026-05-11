@@ -76,7 +76,11 @@ if source_format == "keyword_map":
         "same column structure with optimized content columns appended on the right."
     )
     if st.button("Generate Round-Trip Export", type="primary", key="export_roundtrip_btn"):
-        buffer = export_keyword_map_roundtrip(export_collections, client.get("brand_name", ""))
+        buffer = export_keyword_map_roundtrip(
+            export_collections,
+            client.get("brand_name", ""),
+            keyword_width=st.session_state.get("source_keyword_width", 4),
+        )
         st.download_button(
             label="Download Round-Trip Keyword Map",
             data=buffer,

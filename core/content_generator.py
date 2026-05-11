@@ -41,6 +41,36 @@ def _load_methodology_rules() -> dict:
         return json.load(f)
 
 
+def _existing_content_block(brief: ContentBrief) -> str:
+    """Build the EXISTING CONTENT prompt block with labelled top/bottom/other sections.
+
+    Returns an empty string when none of ``existing_top_copy``,
+    ``existing_bottom_copy``, or ``existing_content`` are populated, so the
+    section is omitted entirely from the rendered prompt.
+    """
+    top = (getattr(brief, "existing_top_copy", "") or "").strip()
+    bottom = (getattr(brief, "existing_bottom_copy", "") or "").strip()
+    other = (brief.existing_content or "").strip()
+    if not (top or bottom or other):
+        return ""
+
+    sections = []
+    if top:
+        sections.append(f"--- CURRENT TOP-OF-PAGE COPY ---\n{top}")
+    if bottom:
+        sections.append(f"--- CURRENT BOTTOM-OF-PAGE COPY ---\n{bottom}")
+    if other:
+        sections.append(f"--- OTHER EXISTING CONTENT ---\n{other}")
+    body = "\n\n".join(sections)
+    return (
+        "\nEXISTING CONTENT (reference for tone, details, and improvement):\n\n"
+        f"{body}\n\n"
+        "Use the content above as reference — retain any brand-specific facts, "
+        "product details, or tone that works well, but rewrite and improve "
+        "rather than copying.\n"
+    )
+
+
 def build_system_prompt(brief: ContentBrief) -> str:
     """Build the system prompt from template and brief data."""
     from core.brand_profile import build_brand_custom_context
@@ -115,15 +145,7 @@ def build_full_brief_prompt(
             f"{', '.join(batch_faq_topics)}"
         )
 
-    existing_content_block = ""
-    if brief.existing_content:
-        existing_content_block = (
-            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
-            "The page currently has the following content. Use it as context — retain any "
-            "brand-specific facts, product details, or tone that works well, but rewrite and "
-            "improve rather than copying:\n"
-            f"```\n{brief.existing_content}\n```\n"
-        )
+    existing_content_block = _existing_content_block(brief)
 
     bottom_target = brief.target_bottom_word_count
     bottom_min = max(int(bottom_target * 0.75), 75)
@@ -186,15 +208,7 @@ def build_description_prompt(
         else "No related blog posts provided — omit the optional blog link."
     )
 
-    existing_content_block = ""
-    if brief.existing_content:
-        existing_content_block = (
-            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
-            "The page currently has the following content. Use it as context — retain any "
-            "brand-specific facts, product details, or tone that works well, but rewrite and "
-            "improve rather than copying:\n"
-            f"```\n{brief.existing_content}\n```\n"
-        )
+    existing_content_block = _existing_content_block(brief)
 
     return template.format(
         collection_name=brief.collection_name,
@@ -246,15 +260,7 @@ def build_bottom_copy_prompt(brief: ContentBrief) -> str:
         else "No related blog posts provided — omit the optional blog link."
     )
 
-    existing_content_block = ""
-    if brief.existing_content:
-        existing_content_block = (
-            "\nEXISTING CONTENT (reference for tone, details, and improvement):\n"
-            "The page currently has the following content. Use it as context — retain any "
-            "brand-specific facts, product details, or tone that works well, but rewrite and "
-            "improve rather than copying:\n"
-            f"```\n{brief.existing_content}\n```\n"
-        )
+    existing_content_block = _existing_content_block(brief)
 
     return template.format(
         collection_name=brief.collection_name,

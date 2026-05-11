@@ -134,8 +134,10 @@ class TestBuildBriefsBatch:
             "existing_bottom_copy": "Bottom copy here.",
         }]
         briefs = build_briefs_for_batch(collections, profile)
-        assert "Top copy here." in briefs[0].existing_content
-        assert "Bottom copy here." in briefs[0].existing_content
+        # After the existing_content split, top/bottom are kept on their
+        # own structured fields rather than concatenated.
+        assert briefs[0].existing_top_copy == "Top copy here."
+        assert briefs[0].existing_bottom_copy == "Bottom copy here."
 
 
 class TestSitemapFallback:

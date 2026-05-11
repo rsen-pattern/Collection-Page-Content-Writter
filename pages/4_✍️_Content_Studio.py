@@ -322,13 +322,29 @@ for i, col in enumerate(batch):
                     st.caption("Paste this in your collection page's HTML editor or theme custom-fields.")
 
         if st.button("Regenerate FAQs", key=f"regen_faqs_{i}"):
+            # Drop this collection's previous FAQ questions from the
+            # batch exclusion list so the model isn't artificially
+            # constrained from re-using them after a regenerate.
+            prior_questions = {
+                f.get("question", "") for f in content.get("faqs", [])
+            }
+            filtered_topics = [
+                t for t in st.session_state.batch_faq_topics
+                if t not in prior_questions
+            ]
             with st.spinner("Regenerating..."):
                 try:
                     result = _handle_result(generate_content(
                         **_api_kwargs(), brief=brief, generation_type="faqs",
-                        batch_faq_topics=st.session_state.batch_faq_topics,
+                        batch_faq_topics=filtered_topics,
                     ))
                     content["faqs"] = result.faqs
+                    # Replace the previous questions with the new ones in
+                    # the global topic list so cross-collection dedup
+                    # still works for subsequent collections.
+                    st.session_state.batch_faq_topics = filtered_topics + [
+                        f.get("question", "") for f in result.faqs
+                    ]
                     st.rerun()
                 except Exception as e:
                     st.error(f"Failed: {e}")

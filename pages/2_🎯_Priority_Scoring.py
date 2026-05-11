@@ -245,6 +245,13 @@ mode = st.radio(
     help=MODE_HELP,
 )
 
+if "Test Run" in mode:
+    _model_label = st.session_state.get("selected_model", "default model")
+    st.info(
+        f"🧪 **Test Run mode** — limited to 2 collections. Uses your selected model "
+        f"(`{_model_label}`). Switch to Standard Batch or Full Run when you're ready to scale."
+    )
+
 # Select All / Clear All for Full Run mode
 if "Full Run" in mode:
     sa_col1, sa_col2, _ = st.columns([1, 1, 4])
@@ -310,7 +317,20 @@ mode_label = {
     "Full Run" in mode: "Confirm Full Run",
 }.get(True, "Confirm Batch")
 
-if st.button(mode_label, type="primary", disabled=selected_count < 1):
+# Test Run is now a hard cap rather than an advisory. Disable confirmation
+# when the user has selected more than 2 collections under Test Run mode.
+test_run_blocked = "Test Run" in mode and selected_count > 2
+if test_run_blocked:
+    st.error(
+        "Test Run is limited to 2 collections. Uncheck some to proceed, "
+        "or switch to **Standard Batch** / **Full Run**."
+    )
+
+if st.button(
+    mode_label,
+    type="primary",
+    disabled=(selected_count < 1 or test_run_blocked),
+):
     batch = []
     for i, selected in enumerate(batch_selections):
         scored[i].in_batch = selected
@@ -328,6 +348,13 @@ if st.button(mode_label, type="primary", disabled=selected_count < 1):
                 "secondary_keywords": scored[i].secondary_keywords,
                 "priority_score": scored[i].total_score,
             })
+
+    # When the batch composition changes, drop the in-batch FAQ
+    # exclusion list so the new batch isn't artificially constrained.
+    new_urls = {b["collection_url"] for b in batch}
+    old_urls = {b["collection_url"] for b in st.session_state.get("batch_collections", [])}
+    if new_urls != old_urls:
+        st.session_state.batch_faq_topics = []
 
     st.session_state.batch_collections = batch
     st.session_state.batch_mode = mode

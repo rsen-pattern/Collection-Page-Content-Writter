@@ -85,7 +85,9 @@ class ContentBrief(BaseModel):
     brand_name: str = ""
     store_url: str = ""
     target_market: str = "UK"
-    existing_content: str = ""  # live page copy from scraper, used as reference for new content
+    existing_content: str = ""  # free-form blob, kept for backward compatibility
+    existing_top_copy: str = ""
+    existing_bottom_copy: str = ""
     past_feedback: str = ""
     prompt_overrides: dict = Field(default_factory=dict)
 
@@ -222,6 +224,8 @@ def build_brief(
     paa_questions: list[str] = None,
     keyword_difficulty: Optional[float] = None,
     existing_content: str = "",
+    existing_top_copy: str = "",
+    existing_bottom_copy: str = "",
     faq_count: int = 4,
     past_feedback: str = "",
     prompt_overrides: dict = None,
@@ -282,6 +286,8 @@ def build_brief(
         store_url=store_url,
         target_market=target_market,
         existing_content=existing_content,
+        existing_top_copy=existing_top_copy,
+        existing_bottom_copy=existing_bottom_copy,
         past_feedback=past_feedback,
         prompt_overrides=prompt_overrides,
     )
@@ -315,11 +321,12 @@ def build_briefs_for_batch(
                 kw_difficulty = kw["keyword_difficulty"]
                 break
 
-        existing_content = "\n\n".join(filter(None, [
-            collection.get("existing_top_copy", ""),
-            collection.get("existing_bottom_copy", ""),
-            collection.get("existing_content", ""),
-        ]))
+        # Pass top/bottom/other through as structured fields. Free-form
+        # "existing_content" only carries text that doesn't fit either slot
+        # (e.g. a manually pasted reference paragraph).
+        existing_top = collection.get("existing_top_copy", "")
+        existing_bottom = collection.get("existing_bottom_copy", "")
+        existing_other = collection.get("existing_content", "")
 
         brief = build_brief(
             collection_url=collection.get("collection_url", ""),
@@ -337,7 +344,9 @@ def build_briefs_for_batch(
             related_blog_posts=collection.get("related_blog_posts", []),
             paa_questions=collection.get("paa_questions", []),
             keyword_difficulty=kw_difficulty,
-            existing_content=existing_content,
+            existing_content=existing_other,
+            existing_top_copy=existing_top,
+            existing_bottom_copy=existing_bottom,
             faq_count=client_profile.get("faq_count", 4),
             past_feedback=client_profile.get("past_feedback", ""),
             prompt_overrides=client_profile.get("prompt_overrides", {}),

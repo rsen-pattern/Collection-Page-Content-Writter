@@ -307,6 +307,9 @@ for i, col in enumerate(batch):
                 results[url] = fallback.data
                 st.session_state.scrape_results = results
                 st.session_state.setdefault("scrape_tiers", {})[url] = fallback.tier_used
+                # Stash every tier's attempt so the user can manually pick
+                # a partial result when no tier hit the >=2-field threshold.
+                st.session_state.setdefault("scrape_all_attempts", {})[url] = fallback.all_attempts
 
                 # Write to widget keys so fields visibly populate on rerun.
                 result = fallback.data
@@ -320,6 +323,47 @@ for i, col in enumerate(batch):
                     if result.description:
                         st.session_state[f"audit_desc_{i}"] = result.description
             st.rerun()
+
+        # ── Partial-result manual selector ────────────────────────────────
+        # When the best automatic pick was poor, let the user inspect each
+        # tier's attempt and apply the one they prefer.
+        _attempts = st.session_state.get("scrape_all_attempts", {}).get(url) or {}
+        _show_selector = (
+            scrape_result is not None
+            and (tier_used == "failed" or scrape_result.fields_found < 2)
+            and len(_attempts) > 1
+        )
+        if _show_selector:
+            with st.expander("⚠️ Couldn't fully fetch — pick a tier manually", expanded=False):
+                st.caption(
+                    "Each scraper returned a different result. Apply the one with "
+                    "the most fields, or that ran without errors."
+                )
+                for tier_name, tier_data in _attempts.items():
+                    tier_label = _tier_labels.get(tier_name, tier_name)
+                    summary_parts = [f"**{tier_label}**"]
+                    if tier_data.success:
+                        summary_parts.append(f"{tier_data.fields_found}/4 fields")
+                    else:
+                        summary_parts.append(f"error: {tier_data.error}")
+                    info_col, btn_col = st.columns([4, 1])
+                    with info_col:
+                        st.markdown(" · ".join(summary_parts))
+                    with btn_col:
+                        if st.button("Use this", key=f"use_tier_{i}_{tier_name}"):
+                            results = st.session_state.get("scrape_results", {})
+                            results[url] = tier_data
+                            st.session_state.scrape_results = results
+                            st.session_state.setdefault("scrape_tiers", {})[url] = tier_name
+                            if tier_data.seo_title:
+                                st.session_state[f"audit_seo_title_{i}"] = tier_data.seo_title
+                            if tier_data.h1:
+                                st.session_state[f"audit_h1_{i}"] = tier_data.h1
+                            if tier_data.meta_description:
+                                st.session_state[f"audit_meta_{i}"] = tier_data.meta_description
+                            if tier_data.description:
+                                st.session_state[f"audit_desc_{i}"] = tier_data.description
+                            st.rerun()
 
         # ── Pre-flight flags from SF data ─────────────────────────────────────
         norm_url = url.rstrip("/").replace("http://", "https://")

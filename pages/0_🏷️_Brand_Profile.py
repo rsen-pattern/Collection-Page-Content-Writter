@@ -395,27 +395,71 @@ with sc1:
         st.success(f"Profile saved for **{profile.brand_name}**.")
 
 with sc2:
-    if st.button("📋 Apply to Session", help="Load this profile's settings into the Content Studio session"):
-        st.session_state.client_profile = {
-            "brand_name": clean_keyword(bp_brand_name.strip()),
-            "store_url": bp_store_url.strip(),
-            "brand_usps": _clean_lines(bp_usps),
-            "voice_notes": clean_keyword(bp_voice_notes.strip()),
-            "target_market": bp_target_market,
-            "faq_count": int(bp_faq_count),
-            "past_feedback": clean_keyword(bp_past_feedback.strip()),
+    def _build_apply_payload() -> dict:
+        return {
+            "client_profile": {
+                "brand_name": clean_keyword(bp_brand_name.strip()),
+                "store_url": bp_store_url.strip(),
+                "brand_usps": _clean_lines(bp_usps),
+                "voice_notes": clean_keyword(bp_voice_notes.strip()),
+                "target_market": bp_target_market,
+                "faq_count": int(bp_faq_count),
+                "past_feedback": clean_keyword(bp_past_feedback.strip()),
+            },
+            "prompt_overrides": {
+                "brand_custom_rules": clean_keyword(bp_custom_rules.strip()),
+                "voice_examples": clean_keyword(bp_voice_examples.strip()),
+                "alt_text_rules": clean_keyword(bp_alt_rules.strip()),
+                "alt_text_examples": clean_keyword(bp_alt_examples.strip()),
+                "banned_phrases": _clean_lines(bp_banned_phrases),
+            },
         }
-        st.session_state["prompt_overrides"] = {
-            "brand_custom_rules": clean_keyword(bp_custom_rules.strip()),
-            "voice_examples": clean_keyword(bp_voice_examples.strip()),
-            "alt_text_rules": clean_keyword(bp_alt_rules.strip()),
-            "alt_text_examples": clean_keyword(bp_alt_examples.strip()),
-            "banned_phrases": _clean_lines(bp_banned_phrases),
-        }
+
+    def _apply_brand_payload(payload: dict) -> None:
+        st.session_state.client_profile = payload["client_profile"]
+        st.session_state["prompt_overrides"] = payload["prompt_overrides"]
         # Push sitemap into session so Data Input + Single URL Writer can pick it up.
         pending_sm = st.session_state.get("_bp_pending_sitemap")
         if pending_sm is not None:
             st.session_state["sitemap_parsed"] = pending_sm.to_dict()
         elif _loaded.sitemap_parsed:
             st.session_state["sitemap_parsed"] = _loaded.sitemap_parsed
-        st.success("Profile applied to session. Head to the Content Studio to generate content.")
+
+    if st.button("📋 Apply to Session", help="Load this profile's settings into the Content Studio session"):
+        has_wip = any(
+            st.session_state.get(k)
+            for k in (
+                "collection_groups",
+                "scored_collections",
+                "batch_collections",
+                "generated_content",
+                "audit_results",
+                "scrape_results",
+                "single_url_content",
+            )
+        )
+        if has_wip:
+            st.session_state["_pending_brand_switch"] = _build_apply_payload()
+        else:
+            _apply_brand_payload(_build_apply_payload())
+            st.toast("Profile applied to session.", icon="✅")
+
+if st.session_state.get("_pending_brand_switch"):
+    st.warning(
+        "Switching brands will clear all in-progress work: keyword data, "
+        "scores, batches, audits, generated content, and the Single URL Writer. "
+        "This cannot be undone."
+    )
+    _bs1, _bs2 = st.columns(2)
+    with _bs1:
+        if st.button("✅ Clear and switch", type="primary", key="confirm_brand_switch"):
+            from app import reset_wip_state
+            payload = st.session_state.pop("_pending_brand_switch")
+            reset_wip_state()
+            _apply_brand_payload(payload)
+            st.success("Switched to new brand.")
+            st.rerun()
+    with _bs2:
+        if st.button("Cancel", key="cancel_brand_switch"):
+            st.session_state.pop("_pending_brand_switch", None)
+            st.rerun()
