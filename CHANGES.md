@@ -1,5 +1,126 @@
 # Changes
 
+## Update — Post-merge upgrade (debt, precision, loops, architecture)
+
+Fourteen items from a review of the recent text_utils / sub-collection /
+telemetry merges. Landed across four commits.
+
+### Debt cleanup (Commit 1)
+
+- `app.py` WIP_DEFAULT_FACTORIES now registers `source_keyword_width`,
+  `sub_collection_opportunities`, `audit_results_generated`, and
+  `scrape_all_attempts` — features that arrived in later PRs without
+  being added to the registry. New `PERSISTENT_SESSION_KEYS` tuple
+  documents which keys MUST survive a brand switch. New
+  `_INTERNAL_CACHE_KEYS` tuple captures underscore-prefixed UI cache
+  state cleared on brand switch. `clear_wip_state` alias of
+  `reset_wip_state` for API symmetry.
+- `pages/0_Brand_Profile.py` brand-switch confirmation now shows a
+  concrete WIP inventory ("3 collections from gsc · 2 in batch · 1
+  audit result") instead of the abstract warning.
+- `core/data_ingestion.CollectionGroup` and `core/brief_builder.ContentBrief`
+  fields gained `Field(description=...)` for the existing-content split
+  (top/bottom/other) and the scraper-hydrated fields. Pure documentation.
+- `core/brand_profile.BrandPromptOverrides.dedup_overrides` — explicit
+  per-brand normalisation map for keywords (case-insensitive lookup).
+  Surfaced as an advanced expander on the Brand Profile page. Threaded
+  through `_normalise_for_dedup` / `_deduplicate_keywords` and
+  `build_brief` reads it from `prompt_overrides`.
+- `core/brand_profile.BrandProfile.humanize_by_default` — when set, the
+  "Apply to Session" path seeds `st.session_state.humanize_enabled`.
+
+**Files touched:** `app.py`, `core/brand_profile.py`,
+`core/brief_builder.py`, `core/data_ingestion.py`,
+`pages/0_🏷️_Brand_Profile.py`, `tests/test_app.py`,
+`tests/test_brand_profile.py`, `tests/test_brief_builder.py`.
+
+### UX precision (Commit 2)
+
+- `core/telemetry.py`: `new_correlation_id()` generates short hex IDs;
+  `log_event` and `timed` accept a `correlation_id` parameter that
+  lands in the JSON payload only when set. Sample rate is read from
+  `TELEMETRY_SAMPLE_RATE` on every call (0.0 silences everything).
+- `core/content_generator.py`: `generate_content` and `humanize_content`
+  mint one correlation ID and propagate it through every `bifrost_call`
+  event. Failed attempts emit a `model_attempt_failed` event.
+  `model_fallback` now carries `selected_model` + `succeeded_model` +
+  `attempts` count so fallback flow is reconstructable from logs alone.
+- `pages/2_Priority_Scoring.py`: sub-collection opportunity computation
+  is now hash-cached on collection URLs. `_opps_cache_key` is registered
+  as an internal cache key so brand switches reset it.
+- `pages/5_Export.py`: Test Run mode is visible in deliverables — top
+  error banner, `TESTRUN_` filename prefix on every download, and an
+  inline "NOT FOR CLIENT DELIVERY" banner on each copy-paste card.
+- `core/exporter.export_shopify_csv` accepts `test_run=` and prepends
+  a `# TEST RUN OUTPUT` + `# Generated on <ts>` comment header.
+  Matrixify ignores `#`-prefixed lines so the import still works.
+
+**Files touched:** `core/telemetry.py`, `core/content_generator.py`,
+`core/exporter.py`, `pages/2_🎯_Priority_Scoring.py`,
+`pages/5_📦_Export.py`, `tests/test_telemetry.py`,
+`tests/test_exporter.py`.
+
+### Closing loops (Commit 3)
+
+- `core/generation_history.py` (new): `append_snapshot` captures only
+  `SNAPSHOT_FIELDS` (seo_title, collection_title, description,
+  meta_description, faqs, suggested_headings, suggested_tags, alt_text),
+  never recurses into the history list, caps at `MAX_HISTORY` (10)
+  entries. `restore_snapshot` rolls back without losing later history.
+- `pages/4_Content_Studio.py`: every successful generation (per-collection
+  and Generate All) snapshots prior content before overwriting. New
+  📜 History tab between Brief and Description with per-entry ⏪ Restore
+  button. Generation metadata (`_humanized`, `_generated_at`,
+  `_model_used`, `_generation_type`) tracked on content so snapshots
+  are correctly labelled. `_handle_result` stashes `_last_used_model`
+  on session state so the snapshotter sees the actual model used.
+- `pages/3_Audit.py`: new "🔄 Re-audit with generated content" action
+  audits each collection's generated content as a separate result set
+  stored under `audit_results_generated`. Per-collection display shows
+  a 🟢/🟡/🔴 before/after score line plus a check-by-check diff expander
+  (Fixed / Still failing / Regressed).
+
+**Files touched:** `core/generation_history.py` (new),
+`pages/3_🔍_Audit.py`, `pages/4_✍️_Content_Studio.py`,
+`tests/test_generation_history.py` (new), `tests/test_auditor.py`.
+
+### Architecture (Commit 4)
+
+- `core/content_cache.py` (new): cross-run cache keyed on
+  `(brand, URL, primary_keyword)`. JSON-on-disk under
+  `data/content_cache/` (gitignored). `hash_inputs(brief)` fingerprints
+  the brief signal so `diff_inputs(old, new)` can later flag "secondary
+  keywords, voice notes" as changed since cache write.
+- `core/rate_limiter.py` (new): `AdaptiveRateLimiter` — token bucket
+  sized from `BIFROST_RATE_LIMIT_RPM` (default 5). `record_429()` halves
+  rate, `_maybe_recover_locked` restores after the configurable recovery
+  window. Thread-safe; injectable time/sleep for tests. Module-level
+  `get_limiter()` singleton.
+- `core/content_generator._call_bifrost` consults the limiter before
+  every request, calls `on_wait(seconds)` when throttling, and
+  records 429s via `limiter.record_429()`. Emits `rate_limit_wait`
+  and `rate_limit_429` telemetry events.
+- `core/orchestrator.py` (new): `generate_for_batch(briefs, config,
+  …callbacks)` — pure Python, no Streamlit. `GenerationConfig` and
+  `GenerationResult` dataclasses. Callbacks (`on_start`, `on_progress`,
+  `on_throttle`, `cancel_check`) make the orchestrator headless. Skips
+  already-generated entries unless `force_regenerate=True`. Cancelled
+  briefs are returned in order with `cancelled=True`. Callback
+  exceptions are swallowed so a broken UI shim can't stop a batch.
+- `pages/4_Content_Studio.py._run_generate_all` is now a thin shim
+  over the orchestrator — builds config from session state, supplies
+  Streamlit progress / status / spinner shims as callbacks, snapshots
+  prior content + tags metadata on each on_progress.
+- `.gitignore`: added `data/content_cache/`.
+
+**Files touched:** `core/content_cache.py` (new), `core/rate_limiter.py`
+(new), `core/orchestrator.py` (new), `core/content_generator.py`,
+`pages/4_✍️_Content_Studio.py`, `.gitignore`,
+`tests/test_content_cache.py` (new), `tests/test_rate_limiter.py` (new),
+`tests/test_orchestrator.py` (new).
+
+---
+
 ## Update — Logic fixes (correctness, behaviour, new features)
 
 Twelve issues from a logic review, landed across three commits.

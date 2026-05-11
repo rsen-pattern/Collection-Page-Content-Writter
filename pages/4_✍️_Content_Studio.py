@@ -571,68 +571,91 @@ st.markdown("---")
 st.markdown("## Batch Actions")
 
 def _run_generate_all():
-    progress = st.progress(0)
-    for idx, col in enumerate(batch):
-        bk = col["collection_url"]
-        if bk in st.session_state.generated_content and not st.session_state.get("force_regenerate"):
-            progress.progress((idx + 1) / len(batch))
-            continue
-        brief = st.session_state.content_briefs.get(bk)
-        if brief:
-            with st.spinner(f"Generating {col['collection_name']}..."):
-                try:
-                    result = _handle_result(generate_content(
-                        **_api_kwargs(),
-                        brief=brief,
-                        generation_type="full",
-                        batch_faq_topics=st.session_state.batch_faq_topics,
-                    ))
-                    generated = {
-                        "seo_title": result.seo_title,
-                        "collection_title": result.collection_title,
-                        "description": result.description,
-                        "meta_description": result.meta_description,
-                        "faqs": result.faqs,
-                        "suggested_headings": result.suggested_headings,
-                        "suggested_tags": result.suggested_tags,
-                        "approved": False,
-                    }
-                    humanized_flag = False
-                    if st.session_state.get("humanize_enabled") and generated["description"]:
-                        with st.spinner(f"Humanizing {col['collection_name']}..."):
-                            h_text, _ = humanize_content(
-                                **_api_kwargs(),
-                                content_text=generated["description"],
-                                brand_name=client.get("brand_name", ""),
-                                voice_notes=client.get("voice_notes", ""),
-                            )
-                            generated["description"] = h_text
-                            humanized_flag = True
-                    # Snapshot the prior content (if any) before overwriting.
-                    from core.generation_history import (
-                        append_snapshot, has_meaningful_content,
-                    )
-                    from datetime import datetime as _dt
-                    prior = st.session_state.generated_content.get(bk) or {}
-                    generated["history"] = prior.get("history") or []
-                    if has_meaningful_content(prior):
-                        append_snapshot(
-                            generated,
-                            generation_type=prior.get("_generation_type", "full"),
-                            model_used=prior.get("_model_used", ""),
-                            humanized=bool(prior.get("_humanized")),
-                            timestamp=prior.get("_generated_at"),
-                        )
-                    generated["_humanized"] = humanized_flag
-                    generated["_generated_at"] = _dt.utcnow().isoformat(timespec="seconds") + "Z"
-                    generated["_model_used"] = st.session_state.get("_last_used_model", "")
-                    generated["_generation_type"] = "full"
-                    st.session_state.generated_content[bk] = generated
-                    for faq in result.faqs:
-                        st.session_state.batch_faq_topics.append(faq.get("question", ""))
-                except Exception as e:
-                    st.error(f"Failed for {col['collection_name']}: {e}")
-        progress.progress((idx + 1) / len(batch))
+    """Thin Streamlit shim around the core.orchestrator batch loop."""
+    from datetime import datetime as _dt
+    from core.generation_history import append_snapshot, has_meaningful_content
+    from core.orchestrator import (
+        GenerationConfig, generate_for_batch,
+    )
+
+    # Build the brief list in batch order — skip rows whose brief is missing.
+    briefs = []
+    for col in batch:
+        b = st.session_state.content_briefs.get(col["collection_url"])
+        if b is not None:
+            briefs.append(b)
+    if not briefs:
+        st.warning("No briefs found for the current batch.")
+        return
+
+    config = GenerationConfig(
+        api_key=st.session_state.bifrost_api_key,
+        base_url=st.session_state.get("bifrost_base_url", "https://bifrost.pattern.com"),
+        model=st.session_state.get("selected_model", "anthropic/claude-sonnet-4-6"),
+        humanize_enabled=bool(st.session_state.get("humanize_enabled")),
+        brand_name=client.get("brand_name", ""),
+        voice_notes=client.get("voice_notes", ""),
+        force_regenerate=bool(st.session_state.get("force_regenerate")),
+        batch_faq_topics=list(st.session_state.batch_faq_topics or []),
+    )
+
+    progress = st.progress(0.0)
+    status = st.empty()
+
+    def on_start(brief, idx, total):
+        status.markdown(
+            f"⏳ Generating **{brief.collection_name}** ({idx + 1}/{total})…"
+        )
+
+    def on_throttle(seconds):
+        status.markdown(
+            f"⏳ Rate limit reached — waiting **{seconds:.1f}s** before next call…"
+        )
+
+    def on_progress(result, idx, total):
+        progress.progress((idx + 1) / total)
+        if not result.success:
+            if result.cancelled:
+                return
+            st.error(f"Failed for {result.brief.collection_name}: {result.error}")
+            return
+        bk = result.brief.collection_url
+        if result.skipped:
+            return
+        # Snapshot the prior content (if meaningful) before overwriting.
+        prior = st.session_state.generated_content.get(bk) or {}
+        new_content = dict(result.content)
+        new_content["history"] = prior.get("history") or []
+        if has_meaningful_content(prior):
+            append_snapshot(
+                new_content,
+                generation_type=prior.get("_generation_type", "full"),
+                model_used=prior.get("_model_used", ""),
+                humanized=bool(prior.get("_humanized")),
+                timestamp=prior.get("_generated_at"),
+            )
+        new_content["_humanized"] = bool(config.humanize_enabled)
+        new_content["_generated_at"] = _dt.utcnow().isoformat(timespec="seconds") + "Z"
+        new_content["_model_used"] = result.model_used
+        new_content["_generation_type"] = "full"
+        st.session_state.generated_content[bk] = new_content
+        for faq in new_content.get("faqs", []):
+            st.session_state.batch_faq_topics.append(faq.get("question", ""))
+
+    def cancel_check():
+        return bool(st.session_state.get("cancel_generation"))
+
+    generate_for_batch(
+        briefs=briefs,
+        config=config,
+        already_generated=st.session_state.generated_content,
+        on_start=on_start,
+        on_progress=on_progress,
+        on_throttle=on_throttle,
+        cancel_check=cancel_check,
+    )
+
+    status.empty()
     st.rerun()
 
 

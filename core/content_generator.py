@@ -480,10 +480,29 @@ def _call_bifrost(
     user_prompt: str,
     generation_type: str = "",
     correlation_id: str = "",
+    on_wait=None,
 ) -> str:
-    """Make a single call to Bifrost and return the response text."""
+    """Make a single call to Bifrost and return the response text.
+
+    Rate-limited via the module-level AdaptiveRateLimiter. When the
+    limiter throttles, ``on_wait(seconds)`` is invoked (if provided)
+    so callers can surface throttle status in the UI. On a 429
+    response from Bifrost, the limiter's effective RPM is halved
+    until the recovery window elapses.
+    """
+    from core.rate_limiter import get_limiter
     from core.telemetry import log_event
     import time as _time
+
+    limiter = get_limiter()
+    wait = limiter.acquire(on_wait=on_wait)
+    if wait > 0:
+        log_event(
+            "rate_limit_wait",
+            correlation_id=correlation_id,
+            model=model,
+            wait_seconds=round(wait, 2),
+        )
 
     _t0 = _time.monotonic()
     try:
@@ -496,6 +515,15 @@ def _call_bifrost(
             ],
         )
     except Exception as e:
+        # Detect 429 across openai SDK exception shapes.
+        status_code = getattr(e, "status_code", None) or getattr(e, "code", None)
+        if status_code == 429 or "429" in str(e):
+            limiter.record_429()
+            log_event(
+                "rate_limit_429",
+                correlation_id=correlation_id,
+                model=model,
+            )
         log_event(
             "bifrost_call",
             correlation_id=correlation_id,
@@ -534,6 +562,7 @@ def humanize_content(
     voice_notes: str = "",
     model: str = "anthropic/claude-sonnet-4-6",
     base_url: str = "https://bifrost.pattern.com",
+    on_wait=None,
 ) -> tuple[str, str]:
     """Run the humanizer pass on generated content.
 
@@ -573,6 +602,7 @@ def humanize_content(
                 client, attempt_model, system_prompt, user_prompt,
                 generation_type="humanize",
                 correlation_id=corr_id,
+                on_wait=on_wait,
             )
             used_model = attempt_model
             break
@@ -675,6 +705,7 @@ def generate_content(
                 client, attempt_model, system_prompt, user_prompt,
                 generation_type=generation_type,
                 correlation_id=corr_id,
+                on_wait=kwargs.get("on_wait"),
             )
             used_model = attempt_model
             break
