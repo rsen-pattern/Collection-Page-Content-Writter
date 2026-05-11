@@ -61,6 +61,46 @@ uploaded_file = st.file_uploader(
     help="Accepted formats: GSC queries+pages, Ahrefs organic keywords, SEMrush organic research, custom format",
 )
 
+from core.data_ingestion import load_sample_template as _load_template
+
+st.caption("Don't have keyword data yet? Grab a sample to test the pipeline:")
+template_col1, template_col2, template_col3, _ = st.columns([1, 1, 1, 2])
+with template_col1:
+    st.download_button(
+        "📄 GSC Sample",
+        data=_load_template("gsc"),
+        file_name="sample_gsc.csv",
+        mime="text/csv",
+        help="Google Search Console export format",
+    )
+with template_col2:
+    st.download_button(
+        "📄 Ahrefs Sample",
+        data=_load_template("ahrefs"),
+        file_name="sample_ahrefs.csv",
+        mime="text/csv",
+        help="Ahrefs organic keywords export format",
+    )
+with template_col3:
+    st.download_button(
+        "📄 Keyword Map",
+        data=_load_template("keyword_map"),
+        file_name="sample_keyword_map.csv",
+        mime="text/csv",
+        help="Wide-format mapping template with up to 4 keywords per URL",
+    )
+
+if uploaded_file is None:
+    with st.container(border=True):
+        st.markdown("### 📥 Don't have keyword data yet?")
+        st.markdown(
+            "- **Google Search Console**: Search Results → Export → Filter to your store domain\n"
+            "- **Ahrefs**: Site Explorer → Organic keywords → Export\n"
+            "- **SEMrush**: Organic Research → Positions → Export\n"
+            "- **Custom**: Any CSV with `keyword` + `url` columns (volume, rank, difficulty optional)"
+        )
+        st.caption("Or use the sample templates above to test the pipeline.")
+
 _FORMAT_LABELS = {
     "gsc": "Google Search Console",
     "ahrefs": "Ahrefs",
@@ -261,7 +301,8 @@ if uploaded_file is not None:
             )
 
             if st.button("Process Data", type="primary", disabled=not profile_valid):
-                groups, skipped = normalize_keyword_map(raw_df)
+                with st.spinner(f"Processing {len(raw_df)} rows…"):
+                    groups, skipped = normalize_keyword_map(raw_df)
 
                 no_kw_count = sum(1 for s in skipped if s.reason == "no_keywords")
                 zero_vol_count = sum(1 for s in skipped if s.reason == "zero_volume")
@@ -351,33 +392,34 @@ if uploaded_file is not None:
                 )
 
             if st.button("Process Data", type="primary", disabled=not profile_valid):
-                normalized = pd.DataFrame()
+                with st.spinner(f"Processing {len(raw_df)} rows…"):
+                    normalized = pd.DataFrame()
 
-                if keyword_col != "(none)":
-                    normalized["keyword"] = raw_df[keyword_col].astype(str).str.strip()
-                if url_col != "(none)":
-                    normalized["collection_url"] = raw_df[url_col].astype(str).str.strip()
-                if volume_col != "(none)":
-                    normalized["search_volume"] = pd.to_numeric(raw_df[volume_col], errors="coerce")
-                if difficulty_col != "(none)":
-                    normalized["keyword_difficulty"] = pd.to_numeric(
-                        raw_df[difficulty_col].astype(str).str.replace("%", ""), errors="coerce"
-                    )
-                if rank_col != "(none)":
-                    normalized["current_rank"] = pd.to_numeric(raw_df[rank_col], errors="coerce")
-                if clicks_col != "(none)":
-                    normalized["clicks"] = pd.to_numeric(raw_df[clicks_col], errors="coerce")
+                    if keyword_col != "(none)":
+                        normalized["keyword"] = raw_df[keyword_col].astype(str).str.strip()
+                    if url_col != "(none)":
+                        normalized["collection_url"] = raw_df[url_col].astype(str).str.strip()
+                    if volume_col != "(none)":
+                        normalized["search_volume"] = pd.to_numeric(raw_df[volume_col], errors="coerce")
+                    if difficulty_col != "(none)":
+                        normalized["keyword_difficulty"] = pd.to_numeric(
+                            raw_df[difficulty_col].astype(str).str.replace("%", ""), errors="coerce"
+                        )
+                    if rank_col != "(none)":
+                        normalized["current_rank"] = pd.to_numeric(raw_df[rank_col], errors="coerce")
+                    if clicks_col != "(none)":
+                        normalized["clicks"] = pd.to_numeric(raw_df[clicks_col], errors="coerce")
 
-                # Filter to collection URLs
-                if "collection_url" in normalized.columns:
-                    mask = normalized["collection_url"].str.contains("/collections/", case=False, na=False)
-                    if mask.any():
-                        filtered_count = len(normalized) - mask.sum()
-                        normalized = normalized[mask].copy()
-                        if filtered_count > 0:
-                            st.info(f"Filtered {filtered_count} non-collection URLs")
+                    # Filter to collection URLs
+                    if "collection_url" in normalized.columns:
+                        mask = normalized["collection_url"].str.contains("/collections/", case=False, na=False)
+                        if mask.any():
+                            filtered_count = len(normalized) - mask.sum()
+                            normalized = normalized[mask].copy()
+                            if filtered_count > 0:
+                                st.info(f"Filtered {filtered_count} non-collection URLs")
 
-                groups = group_by_collection(normalized)
+                    groups = group_by_collection(normalized)
 
                 st.session_state.normalized_data = normalized
                 st.session_state.source_format = source_format

@@ -113,6 +113,15 @@ for i, col in enumerate(batch):
     )
 
     with tab_brief:
+        if content:
+            word_count = len(content.get("description", "").split())
+            faq_count = len(content.get("faqs", []))
+            state_label = "approved" if content.get("approved") else "pending review"
+            st.success(
+                f"✅ Content generated · {word_count} words · "
+                f"{faq_count} FAQs · {state_label}. "
+                "Use the tabs above to review and edit."
+            )
         bc1, bc2 = st.columns(2)
         with bc1:
             st.markdown(f"**Primary Keyword:** {brief.primary_keyword}")
@@ -243,7 +252,8 @@ for i, col in enumerate(batch):
 
         for vr in desc_validation.results:
             icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-            st.markdown(f"{icon} {vr.message}")
+            label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+            st.markdown(f"{icon} **{label}** · {vr.message}")
 
         desc_btn1, desc_btn2 = st.columns(2)
         with desc_btn1:
@@ -295,7 +305,8 @@ for i, col in enumerate(batch):
         )
         for vr in faq_validation.results:
             icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-            st.markdown(f"{icon} {vr.message}")
+            label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+            st.markdown(f"{icon} **{label}** · {vr.message}")
 
         if updated_faqs:
             from core.schema import build_faq_schema, schema_to_script_tag as _s2t
@@ -328,7 +339,8 @@ for i, col in enumerate(batch):
             title_validation = validate_seo_title(seo_title, brief.primary_keyword, h1=content.get("collection_title", ""), brand_name=client.get("brand_name", ""))
             for vr in title_validation.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-                st.markdown(f"{icon} {vr.message}")
+                label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+                st.markdown(f"{icon} **{label}** · {vr.message}")
 
         with tc2:
             h1 = st.text_input("Collection Title (H1)", value=content.get("collection_title", ""), key=f"h1_{i}")
@@ -336,7 +348,8 @@ for i, col in enumerate(batch):
             h1_validation = validate_collection_title(h1, brief.primary_keyword, seo_title=content.get("seo_title", ""))
             for vr in h1_validation.results:
                 icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-                st.markdown(f"{icon} {vr.message}")
+                label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+                st.markdown(f"{icon} **{label}** · {vr.message}")
 
         if st.button("Regenerate Titles", key=f"regen_titles_{i}"):
             with st.spinner("Regenerating..."):
@@ -356,7 +369,8 @@ for i, col in enumerate(batch):
         meta_validation = validate_meta_description(meta_desc, brief.primary_keyword)
         for vr in meta_validation.results:
             icon = "✅" if vr.passed else ("❌" if vr.severity == "error" else "⚠️")
-            st.markdown(f"{icon} {vr.message}")
+            label = "Pass" if vr.passed else ("Error" if vr.severity == "error" else "Review")
+            st.markdown(f"{icon} **{label}** · {vr.message}")
 
     with tab_headtags:
         st.markdown("### Suggested Headings")
@@ -445,7 +459,7 @@ for i, col in enumerate(batch):
     st.markdown("---")
     ac1, ac2, ac3 = st.columns(3)
     with ac1:
-        if st.button("Approve", key=f"approve_{i}", type="primary"):
+        if st.button("Approve", key=f"approve_{i}"):
             content["approved"] = True
             st.success("Content approved!")
     with ac2:
@@ -472,52 +486,87 @@ FAQs:
 st.markdown("---")
 st.markdown("## Batch Actions")
 
+def _run_generate_all():
+    progress = st.progress(0)
+    for idx, col in enumerate(batch):
+        bk = col["collection_url"]
+        if bk in st.session_state.generated_content and not st.session_state.get("force_regenerate"):
+            progress.progress((idx + 1) / len(batch))
+            continue
+        brief = st.session_state.content_briefs.get(bk)
+        if brief:
+            with st.spinner(f"Generating {col['collection_name']}..."):
+                try:
+                    result = _handle_result(generate_content(
+                        **_api_kwargs(),
+                        brief=brief,
+                        generation_type="full",
+                        batch_faq_topics=st.session_state.batch_faq_topics,
+                    ))
+                    generated = {
+                        "seo_title": result.seo_title,
+                        "collection_title": result.collection_title,
+                        "description": result.description,
+                        "meta_description": result.meta_description,
+                        "faqs": result.faqs,
+                        "suggested_headings": result.suggested_headings,
+                        "suggested_tags": result.suggested_tags,
+                        "approved": False,
+                    }
+                    if st.session_state.get("humanize_enabled") and generated["description"]:
+                        with st.spinner(f"Humanizing {col['collection_name']}..."):
+                            h_text, _ = humanize_content(
+                                **_api_kwargs(),
+                                content_text=generated["description"],
+                                brand_name=client.get("brand_name", ""),
+                                voice_notes=client.get("voice_notes", ""),
+                            )
+                            generated["description"] = h_text
+                    st.session_state.generated_content[bk] = generated
+                    for faq in result.faqs:
+                        st.session_state.batch_faq_topics.append(faq.get("question", ""))
+                except Exception as e:
+                    st.error(f"Failed for {col['collection_name']}: {e}")
+        progress.progress((idx + 1) / len(batch))
+    st.rerun()
+
+
 ba1, ba2 = st.columns(2)
 with ba1:
     if st.button("Generate All (Full Brief)", type="primary"):
-        progress = st.progress(0)
-        for idx, col in enumerate(batch):
-            bk = col["collection_url"]
-            if bk in st.session_state.generated_content:
-                progress.progress((idx + 1) / len(batch))
-                continue
-            brief = st.session_state.content_briefs.get(bk)
-            if brief:
-                with st.spinner(f"Generating {col['collection_name']}..."):
-                    try:
-                        result = _handle_result(generate_content(
-                            **_api_kwargs(),
-                            brief=brief,
-                            generation_type="full",
-                            batch_faq_topics=st.session_state.batch_faq_topics,
-                        ))
-                        generated = {
-                            "seo_title": result.seo_title,
-                            "collection_title": result.collection_title,
-                            "description": result.description,
-                            "meta_description": result.meta_description,
-                            "faqs": result.faqs,
-                            "suggested_headings": result.suggested_headings,
-                            "suggested_tags": result.suggested_tags,
-                            "approved": False,
-                        }
-                        # Humanizer pass if enabled
-                        if st.session_state.get("humanize_enabled") and generated["description"]:
-                            with st.spinner(f"Humanizing {col['collection_name']}..."):
-                                h_text, _ = humanize_content(
-                                    **_api_kwargs(),
-                                    content_text=generated["description"],
-                                    brand_name=client.get("brand_name", ""),
-                                    voice_notes=client.get("voice_notes", ""),
-                                )
-                                generated["description"] = h_text
-                        st.session_state.generated_content[bk] = generated
-                        for faq in result.faqs:
-                            st.session_state.batch_faq_topics.append(faq.get("question", ""))
-                    except Exception as e:
-                        st.error(f"Failed for {col['collection_name']}: {e}")
-            progress.progress((idx + 1) / len(batch))
-        st.rerun()
+        if len(batch) > 10:
+            st.session_state["_pending_generate_all"] = True
+        else:
+            _run_generate_all()
+
+    if st.session_state.get("_pending_generate_all"):
+        est_mins = round(len(batch) * 12 / 60, 1)
+        humanize_on = st.session_state.get("humanize_enabled", False)
+        humanize_mult = "1.8×" if humanize_on else "1×"
+        force_regenerate = st.session_state.get("force_regenerate", False)
+        skip_count = 0 if force_regenerate else sum(
+            1 for col in batch if col["collection_url"] in st.session_state.generated_content
+        )
+        run_count = len(batch) - skip_count
+
+        st.warning(
+            f"**About to generate content for {run_count} collections.**\n\n"
+            f"- Model: `{st.session_state.get('selected_model', 'default')}`\n"
+            f"- Humaniser: {humanize_on} ({humanize_mult} time)\n"
+            f"- Estimated time: ~{est_mins} mins (12s per collection baseline)\n"
+            f"- Skipping: {skip_count} already-generated "
+            f"(toggle 'Force regenerate' to redo them)\n\n"
+            f"Generation runs sequentially. Keep this tab open."
+        )
+        cgc1, cgc2 = st.columns(2)
+        with cgc1:
+            if st.button("✅ Start generation", type="primary", key="confirm_gen_all"):
+                st.session_state.pop("_pending_generate_all", None)
+                _run_generate_all()
+        with cgc2:
+            if st.button("Cancel", key="cancel_gen_all"):
+                st.session_state.pop("_pending_generate_all", None)
+                st.rerun()
 
 with ba2:
     if st.button("Approve All"):

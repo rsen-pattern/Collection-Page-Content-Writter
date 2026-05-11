@@ -268,5 +268,14 @@ with st.sidebar:
         if dfs_password != st.session_state.dataforseo_password:
             st.session_state.dataforseo_password = dfs_password
 
+    st.markdown("---")
+    st.markdown("### Help")
+    st.markdown(
+        "- [📖 Documentation](https://github.com/rsen-pattern/Collection-Page-Content-Writter/blob/main/README.md)\n"
+        "- [📝 Methodology](https://github.com/rsen-pattern/Collection-Page-Content-Writter/blob/main/README.md#methodology-rules)\n"
+        "- [🐛 Report an issue](https://github.com/rsen-pattern/Collection-Page-Content-Writter/issues)"
+    )
+    st.caption("v0.1 · Internal agency tool")
+
 # Run the selected page
 pg.run()
