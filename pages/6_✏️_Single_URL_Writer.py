@@ -59,6 +59,35 @@ with col_left:
             st.session_state["_existing_top"] = scrape_result.existing_top_copy
             st.session_state["_existing_bottom"] = scrape_result.existing_bottom_copy
             st.session_state["_single_scraped_products"] = [p.model_dump() for p in scrape_result.products]
+
+            # If a brand-profile sitemap is loaded, pre-fill related collections + blog posts.
+            _sm_dict = st.session_state.get("sitemap_parsed")
+            if _sm_dict and scrape_result.h1:
+                from core.sitemap import ParsedSitemap as _PS, find_related_urls as _find
+                try:
+                    _sm = _PS.from_dict(_sm_dict)
+                    hits = _find(
+                        primary_keyword=scrape_result.h1,
+                        secondary_keywords=[],
+                        sitemap=_sm,
+                        target_url=collection_url,
+                    )
+                    if hits["collections"]:
+                        st.session_state["_single_prefill_related"] = "\n".join(
+                            f"{c['name']} | {c['url']}" for c in hits["collections"]
+                        )
+                    if hits["blog_posts"]:
+                        st.session_state["_single_prefill_blogs"] = "\n".join(
+                            f"{b['name']} | {b['url']}" for b in hits["blog_posts"]
+                        )
+                    # Only pre-fill products if scraper found none.
+                    if not scrape_result.products and hits["products"]:
+                        st.session_state["_single_prefill_products"] = "\n".join(
+                            f"{p['name']} | {p['url']}" for p in hits["products"][:20]
+                        )
+                except Exception:
+                    pass
+
             st.success(f"Fetched {len(scrape_result.products)} products via {scrape_result.source}.")
             st.rerun()
 
@@ -128,8 +157,16 @@ with ci_left:
     )
     related_text = st.text_area(
         "Related Collections to Link (one per line: Name | /collections/handle)",
+        value=st.session_state.pop("_single_prefill_related", ""),
         placeholder="Gold Earrings | /collections/gold-earrings\nSilver Rings | /collections/silver-rings",
         height=80,
+    )
+    related_blogs_text = st.text_area(
+        "Related Blog Posts to Link (one per line: Title | /blogs/blog/post-handle)",
+        value=st.session_state.pop("_single_prefill_blogs", ""),
+        placeholder="Why Insulated Tumblers Win | /blogs/news/why-insulated-tumblers-win",
+        height=80,
+        help="Optional. One blog link may be woven into the bottom-of-page copy if relevant.",
     )
 
 with ci_right:
@@ -174,6 +211,12 @@ for line in related_text.strip().split("\n"):
     if "|" in line:
         parts = line.split("|", 1)
         related_collections.append({"name": parts[0].strip(), "url": parts[1].strip()})
+
+related_blog_posts = []
+for line in related_blogs_text.strip().split("\n"):
+    if "|" in line:
+        parts = line.split("|", 1)
+        related_blog_posts.append({"name": parts[0].strip(), "url": parts[1].strip()})
 
 paa_questions = [q.strip() for q in paa_text.strip().split("\n") if q.strip()]
 
@@ -264,10 +307,12 @@ if st.button(
         voice_notes=voice_notes,
         products_to_link=products_to_link,
         related_collections=related_collections,
+        related_blog_posts=related_blog_posts,
         paa_questions=paa_questions,
         keyword_difficulty=float(keyword_difficulty),
         existing_content=combined_existing,
         past_feedback=cp.get("past_feedback", ""),
+        prompt_overrides=st.session_state.get("prompt_overrides", {}),
     )
 
     with st.spinner("Generating content..."):

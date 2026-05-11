@@ -47,6 +47,7 @@ class ContentBrief(BaseModel):
     brand_usps: list[str] = Field(default_factory=list)
     products_to_link: list[dict] = Field(default_factory=list)  # [{name, url}]
     related_collections: list[dict] = Field(default_factory=list)  # [{name, url}]
+    related_blog_posts: list[dict] = Field(default_factory=list)  # [{name, url}]
     target_word_count: int = 200  # kept for compat; mirrors target_bottom_word_count
     target_bottom_word_count: int = 200  # bottom-copy target, scales with KD
     paa_questions: list[str] = Field(default_factory=list)
@@ -142,6 +143,39 @@ def find_related_collections(
     return [{"name": s["name"], "url": s["url"]} for s in scored[:max_related]]
 
 
+def _apply_sitemap_fallback(
+    sitemap,
+    primary_keyword: str,
+    secondary_keywords: list[str],
+    target_url: str,
+    products_to_link: list[dict],
+    related_collections: list[dict],
+    related_blog_posts: list[dict],
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """Fill empty link slots from sitemap matches. Existing values are preserved.
+
+    The sitemap module is optional — callers pass ``None`` when no sitemap is
+    loaded, in which case the inputs are returned untouched.
+    """
+    if sitemap is None:
+        return products_to_link, related_collections, related_blog_posts
+    from core.sitemap import find_related_urls
+
+    suggestions = find_related_urls(
+        primary_keyword=primary_keyword,
+        secondary_keywords=secondary_keywords,
+        sitemap=sitemap,
+        target_url=target_url,
+    )
+    if not products_to_link:
+        products_to_link = [{"name": s["name"], "url": s["url"]} for s in suggestions["products"]]
+    if not related_collections:
+        related_collections = [{"name": s["name"], "url": s["url"]} for s in suggestions["collections"]]
+    if not related_blog_posts:
+        related_blog_posts = [{"name": s["name"], "url": s["url"]} for s in suggestions["blog_posts"]]
+    return products_to_link, related_collections, related_blog_posts
+
+
 def build_brief(
     collection_url: str,
     collection_name: str,
@@ -155,18 +189,27 @@ def build_brief(
     voice_notes: str = "",
     products_to_link: list[dict] = None,
     related_collections: list[dict] = None,
+    related_blog_posts: list[dict] = None,
     paa_questions: list[str] = None,
     keyword_difficulty: Optional[float] = None,
     existing_content: str = "",
     faq_count: int = 4,
     past_feedback: str = "",
     prompt_overrides: dict = None,
+    sitemap=None,
 ) -> ContentBrief:
-    """Build a content brief for a collection."""
+    """Build a content brief for a collection.
+
+    When ``sitemap`` is provided, any empty link slots
+    (``products_to_link``/``related_collections``/``related_blog_posts``) are
+    filled with sitemap-matched URLs. Existing values are never overwritten.
+    """
     if products_to_link is None:
         products_to_link = []
     if related_collections is None:
         related_collections = []
+    if related_blog_posts is None:
+        related_blog_posts = []
     if paa_questions is None:
         paa_questions = []
     if prompt_overrides is None:
@@ -179,6 +222,16 @@ def build_brief(
     deduped_secondary = _deduplicate_keywords(primary_keyword, raw_secondary)
     secondary_kw_list = deduped_secondary[:10]
 
+    products_to_link, related_collections, related_blog_posts = _apply_sitemap_fallback(
+        sitemap=sitemap,
+        primary_keyword=primary_keyword,
+        secondary_keywords=secondary_kw_list,
+        target_url=collection_url,
+        products_to_link=products_to_link,
+        related_collections=related_collections,
+        related_blog_posts=related_blog_posts,
+    )
+
     _, bottom_target = calculate_target_word_counts(keyword_difficulty)
 
     return ContentBrief(
@@ -190,6 +243,7 @@ def build_brief(
         brand_usps=brand_usps,
         products_to_link=products_to_link,
         related_collections=related_collections,
+        related_blog_posts=related_blog_posts,
         target_word_count=bottom_target,
         target_bottom_word_count=bottom_target,
         paa_questions=paa_questions[:5],
@@ -208,8 +262,13 @@ def build_briefs_for_batch(
     batch_collections: list,
     client_profile: dict,
     all_collections: list = None,
+    sitemap=None,
 ) -> list[ContentBrief]:
-    """Build content briefs for a batch of collections."""
+    """Build content briefs for a batch of collections.
+
+    ``sitemap`` is an optional ``ParsedSitemap`` used to fill empty link slots
+    on each brief. When None, behaviour is unchanged from prior versions.
+    """
     if all_collections is None:
         all_collections = []
 
@@ -246,11 +305,14 @@ def build_briefs_for_batch(
             voice_notes=client_profile.get("voice_notes", ""),
             products_to_link=collection.get("products_to_link", []),
             related_collections=related,
+            related_blog_posts=collection.get("related_blog_posts", []),
             paa_questions=collection.get("paa_questions", []),
             keyword_difficulty=kw_difficulty,
             existing_content=existing_content,
             faq_count=client_profile.get("faq_count", 4),
             past_feedback=client_profile.get("past_feedback", ""),
+            prompt_overrides=client_profile.get("prompt_overrides", {}),
+            sitemap=sitemap,
         )
         briefs.append(brief)
 

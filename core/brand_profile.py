@@ -54,6 +54,9 @@ class BrandProfile:
     target_market: str = "UK"
     faq_count: int = 4
     past_feedback: str = ""
+    sitemap_url: str = ""
+    sitemap_parsed: dict = field(default_factory=dict)
+    sitemap_fetched_at: str = ""
     prompt_overrides: BrandPromptOverrides = field(default_factory=BrandPromptOverrides)
 
     def to_dict(self) -> dict:
@@ -65,6 +68,9 @@ class BrandProfile:
             "target_market": self.target_market,
             "faq_count": self.faq_count,
             "past_feedback": self.past_feedback,
+            "sitemap_url": self.sitemap_url,
+            "sitemap_parsed": self.sitemap_parsed,
+            "sitemap_fetched_at": self.sitemap_fetched_at,
             "prompt_overrides": self.prompt_overrides.to_dict(),
         }
 
@@ -80,6 +86,9 @@ class BrandProfile:
             target_market=data.get("target_market", "UK"),
             faq_count=int(data.get("faq_count", 4)),
             past_feedback=data.get("past_feedback", ""),
+            sitemap_url=data.get("sitemap_url", ""),
+            sitemap_parsed=data.get("sitemap_parsed", {}),
+            sitemap_fetched_at=data.get("sitemap_fetched_at", ""),
             prompt_overrides=overrides,
         )
 
@@ -142,6 +151,34 @@ def build_brand_custom_context(profile: dict) -> str:
     if not parts:
         return ""
     return "".join(parts)
+
+
+def get_sitemap(profile: BrandProfile):
+    """Reconstruct a ParsedSitemap from a profile's stored sitemap_parsed dict.
+
+    Returns None if no sitemap is loaded. Imported lazily so the brand_profile
+    module stays independent of ``requests``.
+    """
+    if not profile.sitemap_parsed:
+        return None
+    from core.sitemap import ParsedSitemap
+    return ParsedSitemap.from_dict(profile.sitemap_parsed)
+
+
+def refresh_profile_sitemap(profile: BrandProfile) -> tuple[BrandProfile, str]:
+    """Re-fetch ``profile.sitemap_url`` and update the cached parsed sitemap.
+
+    Returns ``(updated_profile, error_message)``. ``error_message`` is empty
+    on success. A profile with no ``sitemap_url`` is a no-op with an error.
+    """
+    if not profile.sitemap_url:
+        return profile, "No sitemap URL on profile."
+    from core.sitemap import fetch_sitemap
+
+    parsed = fetch_sitemap(profile.sitemap_url)
+    profile.sitemap_parsed = parsed.to_dict()
+    profile.sitemap_fetched_at = parsed.fetched_at
+    return profile, parsed.error
 
 
 def build_custom_rules_block(overrides: BrandPromptOverrides, element: str) -> str:

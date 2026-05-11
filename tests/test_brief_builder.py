@@ -136,3 +136,83 @@ class TestBuildBriefsBatch:
         briefs = build_briefs_for_batch(collections, profile)
         assert "Top copy here." in briefs[0].existing_content
         assert "Bottom copy here." in briefs[0].existing_content
+
+
+class TestSitemapFallback:
+    def _sitemap(self):
+        from core.sitemap import ParsedSitemap, SitemapUrl
+        return ParsedSitemap(
+            products=[
+                SitemapUrl(
+                    url="https://x.com/products/y-charcoal",
+                    url_type="product",
+                    handle="y-charcoal",
+                    title_guess="Y Charcoal",
+                ),
+            ],
+            collections=[
+                SitemapUrl(
+                    url="https://x.com/collections/other-y",
+                    url_type="collection",
+                    handle="other-y",
+                    title_guess="Other Y",
+                ),
+            ],
+            blog_posts=[
+                SitemapUrl(
+                    url="https://x.com/blogs/news/why-y-wins",
+                    url_type="blog",
+                    handle="why-y-wins",
+                    title_guess="Why Y Wins",
+                ),
+            ],
+        )
+
+    def test_fills_empty_link_slots_from_sitemap(self):
+        sitemap = self._sitemap()
+        brief = build_brief(
+            collection_url="https://x.com/collections/y",
+            collection_name="Y",
+            primary_keyword="y",
+            primary_keyword_volume=None,
+            secondary_keywords=[],
+            brand_usps=[],
+            brand_name="X",
+            store_url="",
+            sitemap=sitemap,
+        )
+        assert brief.products_to_link
+        assert brief.related_collections
+        assert brief.related_blog_posts
+
+    def test_preserves_existing_links(self):
+        sitemap = self._sitemap()
+        brief = build_brief(
+            collection_url="https://x.com/collections/y",
+            collection_name="Y",
+            primary_keyword="y",
+            primary_keyword_volume=None,
+            secondary_keywords=[],
+            brand_usps=[],
+            brand_name="X",
+            store_url="",
+            products_to_link=[{"name": "Existing", "url": "/products/existing"}],
+            sitemap=sitemap,
+        )
+        assert brief.products_to_link == [{"name": "Existing", "url": "/products/existing"}]
+        # The other slots are still filled by the sitemap.
+        assert brief.related_blog_posts
+
+    def test_no_sitemap_no_changes(self):
+        brief = build_brief(
+            collection_url="https://x.com/collections/y",
+            collection_name="Y",
+            primary_keyword="y",
+            primary_keyword_volume=None,
+            secondary_keywords=[],
+            brand_usps=[],
+            brand_name="X",
+            store_url="",
+        )
+        assert brief.products_to_link == []
+        assert brief.related_blog_posts == []
