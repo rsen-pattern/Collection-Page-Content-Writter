@@ -49,6 +49,11 @@ class CollectionGroup(BaseModel):
     best_rank: Optional[int] = None
     total_clicks: Optional[int] = None
     total_impressions: Optional[int] = None
+    # Hydrated by the Shopify scraper on the Data Input page
+    products_to_link: list[dict] = Field(default_factory=list)
+    scraped_products: list[dict] = Field(default_factory=list)
+    existing_top_copy: str = ""
+    existing_bottom_copy: str = ""
 
 
 class SkippedCollection(BaseModel):
