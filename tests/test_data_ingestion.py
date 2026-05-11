@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.data_ingestion import (
+    CollectionGroup,
     detect_format,
     normalize_dataframe,
     group_by_collection,
@@ -92,3 +93,31 @@ class TestExtractCollectionName:
     def test_url_with_params(self):
         name = _extract_collection_name("https://example.com/collections/necklaces?page=2")
         assert name == "Necklaces"
+
+
+class TestCollectionGroupScraperFields:
+    def test_collection_group_accepts_scraper_fields(self):
+        group = CollectionGroup(
+            collection_url="https://x.com/collections/y",
+            collection_name="Y",
+            primary_keyword="y",
+        )
+        group.products_to_link = [{"name": "P", "url": "/products/p"}]
+        group.scraped_products = [{"name": "P", "url": "/products/p"}]
+        group.existing_top_copy = "top"
+        group.existing_bottom_copy = "bottom"
+        assert group.products_to_link[0]["name"] == "P"
+        assert group.scraped_products[0]["url"] == "/products/p"
+        assert group.existing_top_copy == "top"
+        assert group.existing_bottom_copy == "bottom"
+
+    def test_collection_group_scraper_fields_default_empty(self):
+        group = CollectionGroup(
+            collection_url="https://x.com/collections/y",
+            collection_name="Y",
+            primary_keyword="y",
+        )
+        assert group.products_to_link == []
+        assert group.scraped_products == []
+        assert group.existing_top_copy == ""
+        assert group.existing_bottom_copy == ""

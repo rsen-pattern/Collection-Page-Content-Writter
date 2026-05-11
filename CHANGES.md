@@ -1,5 +1,21 @@
 # Changes
 
+## Fix — `CollectionGroup` Pydantic strict-mode error
+
+The Shopify scraper handler on `pages/1_📊_Data_Input.py` assigns
+`products_to_link`, `scraped_products`, `existing_top_copy`, and
+`existing_bottom_copy` on each `CollectionGroup`, but those fields were never
+declared on the model. Pydantic v2 raised
+`ValueError: "CollectionGroup" object has no field "products_to_link"` and
+broke the "🔍 Scrape products for all collections" button end-to-end.
+
+- `core/data_ingestion.py`: declared the four missing fields on
+  `CollectionGroup` with empty defaults so the scraper can hydrate them.
+- `tests/test_data_ingestion.py`: added `TestCollectionGroupScraperFields`
+  covering assignment + default values.
+
+**Files touched:** `core/data_ingestion.py`, `tests/test_data_ingestion.py`.
+
 ## Update — Past feedback log + softer brand voice quotas
 
 **Prompt 6 — two related changes in one pass**
